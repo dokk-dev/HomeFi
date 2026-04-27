@@ -41,12 +41,22 @@ export function PillarCard({ pillar }: PillarCardProps) {
       </div>
 
       {/* Progress bar */}
-      <div className="w-full bg-surface-container-highest h-[3px] rounded-full overflow-hidden">
+      <div className="w-full bg-surface-container-highest h-[3px] rounded-full overflow-hidden mb-4">
         <div
           className="h-full rounded-full transition-all duration-500"
           style={{ width: `${mastery}%`, backgroundColor: pillar.color }}
         />
       </div>
+
+      {/* Streak badge */}
+      {(pillar.streak ?? 0) > 0 && (
+        <div className="flex items-center gap-1.5">
+          <span className="text-base leading-none">🔥</span>
+          <span className="text-[11px] font-bold text-on-surface-variant">
+            {pillar.streak} day streak
+          </span>
+        </div>
+      )}
     </Link>
   );
 }

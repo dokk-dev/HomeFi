@@ -14,9 +14,15 @@ export function Sidebar() {
   const pathname = usePathname();
   const { data: session } = useSession();
   const [timerOpen, setTimerOpen] = useState(false);
+  const [mobileOpen, setMobileOpen] = useState(false);
+
+  // Close mobile drawer on navigation
+  useEffect(() => { setMobileOpen(false); }, [pathname]);
   const [displayAvatar, setDisplayAvatar] = useState<string | null>(null);
   const [avatarPopping, setAvatarPopping] = useState(false);
   const [iconOverrides, setIconOverrides] = useState<Record<string, string>>({});
+  // Pillar label/color overrides from DB (updated when user saves in Settings)
+  const [pillarOverrides, setPillarOverrides] = useState<Record<string, { label: string; color: string }>>({});
 
   const displayName = session?.user?.name?.toUpperCase() ?? "YOU";
 
@@ -27,9 +33,20 @@ export function Sidebar() {
 
   useEffect(() => {
     try {
-      const ov = localStorage.getItem("myfi-icon-overrides");
+      const ov = localStorage.getItem("meridian-icon-overrides");
       if (ov) setIconOverrides(JSON.parse(ov));
     } catch {}
+
+    // Fetch current pillar labels/colors from DB
+    fetch("/api/pillars")
+      .then((r) => r.json())
+      .then((pillars: { slug: string; label: string; color: string }[]) => {
+        if (!Array.isArray(pillars)) return;
+        const overrides: Record<string, { label: string; color: string }> = {};
+        for (const p of pillars) overrides[p.slug] = { label: p.label, color: p.color };
+        setPillarOverrides(overrides);
+      })
+      .catch(() => {});
 
     function handleAvatarChange(e: Event) {
       const url = (e as CustomEvent<{ url: string }>).detail.url;
@@ -42,22 +59,44 @@ export function Sidebar() {
 
     function handleIconChange() {
       try {
-        const ov = localStorage.getItem("myfi-icon-overrides");
+        const ov = localStorage.getItem("meridian-icon-overrides");
         setIconOverrides(ov ? JSON.parse(ov) : {});
       } catch {}
     }
 
+    function handleLabelChange(e: Event) {
+      const { slug, label, color } = (e as CustomEvent<{ slug: string; label: string; color: string }>).detail;
+      setPillarOverrides((prev) => ({ ...prev, [slug]: { label, color } }));
+    }
+
+    function handleSidebarOpen() { setMobileOpen(true); }
+
     window.addEventListener("avatar-changed", handleAvatarChange);
     window.addEventListener("icon-overrides-changed", handleIconChange);
+    window.addEventListener("pillar-label-changed", handleLabelChange);
+    window.addEventListener("sidebar-open", handleSidebarOpen);
     return () => {
       window.removeEventListener("avatar-changed", handleAvatarChange);
       window.removeEventListener("icon-overrides-changed", handleIconChange);
+      window.removeEventListener("pillar-label-changed", handleLabelChange);
+      window.removeEventListener("sidebar-open", handleSidebarOpen);
     };
   }, []);
 
   return (
     <>
-    <aside className="fixed left-0 top-0 h-screen flex flex-col py-6 w-64 bg-surface-container-low z-50 overflow-y-auto">
+    {/* Mobile backdrop */}
+    {mobileOpen && (
+      <div
+        className="fixed inset-0 z-40 bg-black/50 md:hidden"
+        onClick={() => setMobileOpen(false)}
+      />
+    )}
+    <aside
+      className={`fixed left-0 top-0 h-screen flex flex-col py-6 w-64 bg-surface-container-low z-50 overflow-y-auto transition-transform duration-300 ${
+        mobileOpen ? "translate-x-0" : "-translate-x-full md:translate-x-0"
+      }`}
+    >
       {/* ── Nameplate with avatar ──────────────────────────────────── */}
       <Link href="/dashboard" className="px-6 mb-10 block group">
         <div className="flex items-center gap-3">
@@ -90,7 +129,7 @@ export function Sidebar() {
 
           <div className="group-hover:opacity-80 transition-opacity">
             <div className="text-base font-headline font-bold text-primary tracking-tight leading-tight">
-              {session?.user?.name ?? "MyFi"}
+              {session?.user?.name ?? "Meridian"}
             </div>
             <div className="text-[10px] font-label font-bold uppercase tracking-[0.2em] text-outline mt-0.5">
               Deep Work Mode
@@ -109,6 +148,8 @@ export function Sidebar() {
           const isActive = pathname === `/dashboard/pillars/${pillar.slug}`;
           const overrideKey = iconOverrides[pillar.slug];
           const Icon = (overrideKey ? ICON_REGISTRY[overrideKey] : null) ?? PILLAR_ICONS[pillar.slug];
+          const color = pillarOverrides[pillar.slug]?.color ?? pillar.color;
+          const label = pillarOverrides[pillar.slug]?.label ?? pillar.shortLabel;
           return (
             <Link
               key={pillar.slug}
@@ -118,10 +159,10 @@ export function Sidebar() {
                   ? "font-headline font-bold"
                   : "border-transparent text-on-surface-variant hover:text-on-surface hover:bg-surface-container"
               }`}
-              style={isActive ? { color: pillar.color, backgroundColor: `${pillar.color}0d`, borderLeftColor: pillar.color } : undefined}
+              style={isActive ? { color, backgroundColor: `${color}0d`, borderLeftColor: color } : undefined}
             >
-              {Icon && <Icon size={18} style={isActive ? { color: pillar.color } : undefined} />}
-              <span className="text-sm font-headline font-semibold tracking-tight">{pillar.shortLabel}</span>
+              {Icon && <Icon size={18} style={isActive ? { color } : undefined} />}
+              <span className="text-sm font-headline font-semibold tracking-tight">{label}</span>
             </Link>
           );
         })}

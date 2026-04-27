@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { Circle, CheckCircle2, Archive, ChevronRight, Plus, Trash2, Clock } from "lucide-react";
+import { Circle, CheckCircle2, Archive, ChevronRight, Plus, Trash2, Clock, CalendarDays, ChevronUp, ChevronDown, RefreshCw, SkipForward } from "lucide-react";
 import { StepList } from "@/components/steps/StepList";
 import { formatAdvisoryTime } from "@/lib/utils";
 import type { Task, Step } from "@/lib/types";
@@ -16,6 +16,23 @@ interface TaskRowProps {
   onToggleStep: (stepId: string, complete: boolean) => Promise<void>;
   onDeleteStep: (stepId: string) => Promise<void>;
   onAddStep: (taskId: string, title: string) => Promise<void>;
+  onMoveUp?: () => void;
+  onMoveDown?: () => void;
+}
+
+function formatDueDate(due: string | null): { label: string; overdue: boolean } | null {
+  if (!due) return null;
+  const date = new Date(due + "T00:00:00");
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  const diff = Math.round((date.getTime() - today.getTime()) / 86_400_000);
+  const overdue = diff < 0;
+  let label: string;
+  if (diff === 0) label = "Today";
+  else if (diff === 1) label = "Tomorrow";
+  else if (diff === -1) label = "Yesterday";
+  else label = date.toLocaleDateString("en-US", { month: "short", day: "numeric" });
+  return { label, overdue };
 }
 
 function timeAgo(dateStr: string): string {
@@ -39,6 +56,8 @@ export function TaskRow({
   onToggleStep,
   onDeleteStep,
   onAddStep,
+  onMoveUp,
+  onMoveDown,
 }: TaskRowProps) {
   const [expanded, setExpanded] = useState(false);
   const [pending, setPending] = useState(false);
@@ -126,6 +145,47 @@ export function TaskRow({
           </span>
         )}
 
+        {/* Due date badge */}
+        {(() => {
+          const due = formatDueDate(task.due_date);
+          if (!due) return null;
+          return (
+            <span
+              className={`text-[10px] px-2 py-0.5 rounded flex items-center gap-1 flex-shrink-0 ${
+                due.overdue
+                  ? "bg-red-500/15 text-red-400"
+                  : "bg-surface-container text-outline"
+              }`}
+            >
+              <CalendarDays size={10} />
+              {due.label}
+            </span>
+          );
+        })()}
+
+        {/* Recurrence badge */}
+        {task.recurrence_rule && (() => {
+          const { days, recurrenceType } = task.recurrence_rule;
+          const shortDays = days.map((d) => d.slice(0, 2).charAt(0).toUpperCase() + d.slice(1, 2).toLowerCase()).join(" ");
+          if (recurrenceType === "raincheck") {
+            return (
+              <span className="text-[10px] px-2 py-0.5 rounded flex items-center gap-1 flex-shrink-0 bg-amber-500/15 text-amber-400">
+                <SkipForward size={10} />
+                Raincheck
+              </span>
+            );
+          }
+          return (
+            <span className="text-[10px] px-2 py-0.5 rounded flex items-center gap-1 flex-shrink-0 bg-surface-container text-outline">
+              <RefreshCw size={9} />
+              {shortDays}
+              {recurrenceType === "temporary" && task.recurrence_rule.endsAt && (
+                <span className="opacity-70">until {new Date(task.recurrence_rule.endsAt + "T00:00:00").toLocaleDateString("en-US", { month: "short", day: "numeric" })}</span>
+              )}
+            </span>
+          );
+        })()}
+
         {/* Steps expand */}
         {steps.length > 0 && (
           <button
@@ -148,6 +208,28 @@ export function TaskRow({
           >
             <Plus size={16} />
           </button>
+        )}
+
+        {/* Reorder */}
+        {(onMoveUp || onMoveDown) && (
+          <div className="opacity-0 group-hover/task:opacity-100 transition-opacity flex flex-col gap-0.5 flex-shrink-0">
+            <button
+              onClick={onMoveUp}
+              disabled={!onMoveUp}
+              className="text-outline hover:text-on-surface transition-colors disabled:opacity-20 disabled:cursor-default"
+              aria-label="Move up"
+            >
+              <ChevronUp size={14} />
+            </button>
+            <button
+              onClick={onMoveDown}
+              disabled={!onMoveDown}
+              className="text-outline hover:text-on-surface transition-colors disabled:opacity-20 disabled:cursor-default"
+              aria-label="Move down"
+            >
+              <ChevronDown size={14} />
+            </button>
+          </div>
         )}
 
         {/* Delete */}

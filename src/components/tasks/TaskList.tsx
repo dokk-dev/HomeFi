@@ -4,6 +4,7 @@ import { useState, useCallback, useImperativeHandle, forwardRef, useRef } from "
 import { Plus } from "lucide-react";
 import { TaskRow } from "./TaskRow";
 import { TaskForm } from "./TaskForm";
+import { useToast } from "@/components/ui/Toast";
 import type { Task, Step, CreateTaskInput } from "@/lib/types";
 
 interface TaskListProps {
@@ -20,6 +21,7 @@ export const TaskList = forwardRef<TaskListHandle, TaskListProps>(function TaskL
   { initialTasks, pillarId, pillarColor },
   ref
 ) {
+  const { toast } = useToast();
   const [tasks, setTasks] = useState<Task[]>(initialTasks);
   const [showForm, setShowForm] = useState(false);
   const formRef = useRef<HTMLDivElement>(null);
@@ -42,8 +44,9 @@ export const TaskList = forwardRef<TaskListHandle, TaskListProps>(function TaskL
       const task: Task = await res.json();
       setTasks((prev) => [...prev, { ...task, steps: [] }]);
       setShowForm(false);
+      toast("Task added");
     }
-  }, []);
+  }, [toast]);
 
   const toggleTask = useCallback(async (taskId: string, complete: boolean) => {
     setTasks((prev) =>
@@ -65,6 +68,42 @@ export const TaskList = forwardRef<TaskListHandle, TaskListProps>(function TaskL
     setTasks((prev) => prev.filter((t) => t.id !== taskId));
     const res = await fetch(`/api/tasks/${taskId}`, { method: "DELETE" });
     if (!res.ok) window.location.reload();
+  }, []);
+
+  const moveTask = useCallback((taskId: string, direction: "up" | "down") => {
+    setTasks((prev) => {
+      const pending = prev.filter((t) => !t.is_complete);
+      const done = prev.filter((t) => t.is_complete);
+      const idx = pending.findIndex((t) => t.id === taskId);
+      if (idx === -1) return prev;
+      const swapIdx = direction === "up" ? idx - 1 : idx + 1;
+      if (swapIdx < 0 || swapIdx >= pending.length) return prev;
+
+      const next = [...pending];
+      [next[idx], next[swapIdx]] = [next[swapIdx], next[idx]];
+
+      // Fire-and-forget position updates
+      const posA = next[idx].position;
+      const posB = next[swapIdx].position;
+      fetch(`/api/tasks/${next[idx].id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ position: posB }),
+      });
+      fetch(`/api/tasks/${next[swapIdx].id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ position: posA }),
+      });
+
+      // Swap stored positions in local state too
+      const updatedA = { ...next[idx], position: posB };
+      const updatedB = { ...next[swapIdx], position: posA };
+      next[idx] = updatedA;
+      next[swapIdx] = updatedB;
+
+      return [...next, ...done];
+    });
   }, []);
 
   // ─── Step actions ──────────────────────────────────────────────────────
@@ -175,6 +214,8 @@ export const TaskList = forwardRef<TaskListHandle, TaskListProps>(function TaskL
               onToggleStep={toggleStep}
               onDeleteStep={deleteStep}
               onAddStep={addStep}
+              onMoveUp={idx > 0 ? () => moveTask(task.id, "up") : undefined}
+              onMoveDown={idx < nextActions.length - 1 ? () => moveTask(task.id, "down") : undefined}
             />
           ))}
         </div>

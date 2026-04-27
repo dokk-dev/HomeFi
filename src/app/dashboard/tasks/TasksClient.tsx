@@ -119,9 +119,9 @@ export function TasksClient({ tasks, pillars, userAvatarUrl }: Props) {
   ];
 
   return (
-    <div className="flex flex-1 min-h-0 p-8 gap-8">
+    <div className="flex flex-1 min-h-0 p-4 md:p-8 gap-6 md:gap-8">
       {/* ── Left sidebar ──────────────────────────────────────────────── */}
-      <div className="w-52 flex-shrink-0 space-y-6">
+      <div className="hidden md:block w-52 flex-shrink-0 space-y-6">
         {/* Perspective */}
         <div>
           <p className="text-[10px] font-bold uppercase tracking-widest text-outline mb-3">
@@ -187,7 +187,7 @@ export function TasksClient({ tasks, pillars, userAvatarUrl }: Props) {
         {/* Header */}
         <div className="flex items-start justify-between">
           <div>
-            <h1 className="text-4xl font-extrabold font-headline tracking-tight text-on-surface">
+            <h1 className="text-2xl md:text-4xl font-extrabold font-headline tracking-tight text-on-surface">
               Master Task View
             </h1>
             <p className="text-on-surface-variant text-sm mt-1">
@@ -298,7 +298,7 @@ export function TasksClient({ tasks, pillars, userAvatarUrl }: Props) {
         </div>
 
         {/* Bottom stats row */}
-        <div className="grid grid-cols-3 gap-4">
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
           {/* Intentionality Progress */}
           <div className="col-span-2 bg-surface-container-low rounded-xl p-6 border border-outline-variant/10">
             <h3 className="text-base font-headline font-bold text-on-surface mb-1">

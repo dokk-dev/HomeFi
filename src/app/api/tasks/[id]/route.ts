@@ -1,11 +1,15 @@
 import { withSessionAndParams } from "@/lib/api/withSession";
 import { getSupabaseAdminClient } from "@/lib/supabase/admin";
-import type { UpdateTaskInput } from "@/lib/types";
+import { UpdateTaskSchema } from "@/lib/api/schemas";
 
 type Params = { id: string };
 
 export const PATCH = withSessionAndParams<Params>(async (req, { params }, userId) => {
-  const body: UpdateTaskInput = await req.json();
+  const parsed = UpdateTaskSchema.safeParse(await req.json());
+  if (!parsed.success) {
+    return Response.json({ error: parsed.error.issues[0]?.message ?? "Invalid input" }, { status: 400 });
+  }
+  const body = parsed.data;
   const supabase = getSupabaseAdminClient();
 
   const updateData: Record<string, unknown> = {};
@@ -18,6 +22,7 @@ export const PATCH = withSessionAndParams<Params>(async (req, { params }, userId
   if (body.advisory_minutes !== undefined) updateData.advisory_minutes = body.advisory_minutes;
   if (body.position !== undefined) updateData.position = body.position;
   if (body.due_date !== undefined) updateData.due_date = body.due_date;
+  if (body.recurrence_rule !== undefined) updateData.recurrence_rule = body.recurrence_rule;
 
   const { data: task, error } = await supabase
     .from("tasks")

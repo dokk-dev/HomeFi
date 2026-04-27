@@ -6,13 +6,7 @@ export const GET = withSession(async (_req, userId) => {
 
   const { data: pillars, error } = await supabase
     .from("pillars")
-    .select(
-      `
-      *,
-      tasks(count),
-      completed:tasks(count)
-    `
-    )
+    .select("*")
     .eq("user_id", userId)
     .order("position");
 

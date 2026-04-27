@@ -1,7 +1,14 @@
 "use client";
 
 import { useState, useEffect, useRef, useCallback, FormEvent, KeyboardEvent } from "react";
-import { Bot, Send, Square, X, Sparkles } from "lucide-react";
+import { Bot, Send, Square, X, Sparkles, ChevronDown } from "lucide-react";
+
+type Provider = "ollama" | "gemini";
+
+const OLLAMA_MODELS = ["llama3", "llava", "mistral", "codellama", "phi3", "gemma2"];
+
+const PROVIDER_STORAGE_KEY = "meridian-ai-provider";
+const MODEL_STORAGE_KEY = "meridian-ollama-model";
 
 interface Message {
   id?: string;
@@ -80,8 +87,32 @@ export function StudyAssistant({
   const [input, setInput] = useState("");
   const [isLoading, setIsLoading] = useState(false);
   const [isStreaming, setIsStreaming] = useState(false);
+  const [provider, setProvider] = useState<Provider>("gemini");
+  const [ollamaModel, setOllamaModel] = useState("llama3");
+  const [modelMenuOpen, setModelMenuOpen] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+
+  // Load provider preference from localStorage
+  useEffect(() => {
+    try {
+      const savedProvider = localStorage.getItem(PROVIDER_STORAGE_KEY) as Provider | null;
+      if (savedProvider === "ollama" || savedProvider === "gemini") setProvider(savedProvider);
+      const savedModel = localStorage.getItem(MODEL_STORAGE_KEY);
+      if (savedModel) setOllamaModel(savedModel);
+    } catch {}
+  }, []);
+
+  function switchProvider(p: Provider) {
+    setProvider(p);
+    try { localStorage.setItem(PROVIDER_STORAGE_KEY, p); } catch {}
+  }
+
+  function switchModel(m: string) {
+    setOllamaModel(m);
+    setModelMenuOpen(false);
+    try { localStorage.setItem(MODEL_STORAGE_KEY, m); } catch {}
+  }
 
   const hasMessages = messages.length > 0;
 
@@ -92,7 +123,7 @@ export function StudyAssistant({
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [messages]);
+  }, [isStreaming]);
 
   useEffect(() => {
     const ta = textareaRef.current;
@@ -131,7 +162,13 @@ export function StudyAssistant({
       const res = await fetch("/api/chat", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ pillarSlug, message: trimmed, history }),
+        body: JSON.stringify({
+          pillarSlug,
+          message: trimmed,
+          history,
+          provider,
+          model: provider === "ollama" ? ollamaModel : undefined,
+        }),
       });
 
       if (!res.ok) {
@@ -143,19 +180,17 @@ export function StudyAssistant({
 
       const reader = res.body.getReader();
       const decoder = new TextDecoder();
+      let buffer = "";
       while (true) {
         const { done, value } = await reader.read();
         if (done) break;
-        const chunk = decoder.decode(value, { stream: true });
-        setMessages((prev) => {
-          const updated = [...prev];
-          updated[updated.length - 1] = {
-            role: "assistant",
-            content: updated[updated.length - 1].content + chunk,
-          };
-          return updated;
-        });
+        buffer += decoder.decode(value, { stream: true });
       }
+      setMessages((prev) => {
+        const updated = [...prev];
+        updated[updated.length - 1] = { role: "assistant", content: buffer };
+        return updated;
+      });
     } catch (err) {
       // Only fires for true network failures (server unreachable, etc.)
       const message = err instanceof Error ? err.message : "Could not reach the server";
@@ -171,7 +206,7 @@ export function StudyAssistant({
       setIsStreaming(false);
       textareaRef.current?.focus();
     }
-  }, [input, isStreaming, messages, pillarSlug]);
+  }, [input, isStreaming, messages, pillarSlug, provider, ollamaModel]);
 
   function handleKeyDown(e: KeyboardEvent<HTMLTextAreaElement>) {
     if (e.key === "Enter" && !e.shiftKey) {
@@ -188,141 +223,202 @@ export function StudyAssistant({
     return (
       <>
         {/* Panel header */}
-        <div className="flex items-center justify-between px-5 py-4 border-b border-outline-variant/10 flex-shrink-0">
-          <div className="flex items-center gap-3">
-            <div
-              className="w-8 h-8 rounded-lg flex items-center justify-center border flex-shrink-0"
-              style={{
-                backgroundColor: `${pillarColor}15`,
-                borderColor: `${pillarColor}30`,
-              }}
-            >
-              <Bot size={16} style={{ color: pillarColor }} />
-            </div>
-            <div>
-              <h3 className="text-sm font-headline font-semibold text-on-surface">
-                AI Tutor
-              </h3>
-              <span className="text-[10px] text-emerald-400 font-medium">
-                Context: {taskCount} task{taskCount !== 1 ? "s" : ""} loaded
-              </span>
-            </div>
-          </div>
-          {onClose && (
-            <button
-              onClick={onClose}
-              className="text-outline hover:text-on-surface transition-colors"
-              aria-label="Close AI Tutor"
-            >
-              <X size={18} />
-            </button>
-          )}
-        </div>
-
-        {/* Messages area */}
-        <div className="flex-1 overflow-y-auto p-4 space-y-4">
-          {isLoading && (
-            <div className="flex items-center gap-2 text-outline text-sm">
-              <LoadingDots />
-              Loading conversation…
-            </div>
-          )}
-
-          {isEmpty && (
-            <div className="h-full flex flex-col items-center justify-center text-center gap-4 py-8">
+        <div className="px-5 py-4 border-b border-outline-variant/10 flex-shrink-0 space-y-3">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-3">
               <div
-                className="w-12 h-12 rounded-xl flex items-center justify-center"
-                style={{ backgroundColor: `${pillarColor}15` }}
+                className="w-8 h-8 rounded-lg flex items-center justify-center border flex-shrink-0"
+                style={{
+                  backgroundColor: `${pillarColor}15`,
+                  borderColor: `${pillarColor}30`,
+                }}
               >
-                <Sparkles size={24} style={{ color: pillarColor }} />
+                <Bot size={16} style={{ color: pillarColor }} />
               </div>
               <div>
-                <p className="text-on-surface-variant font-medium text-sm">
-                  Your {pillarLabel} tutor
-                </p>
-                <p className="text-outline text-xs mt-1 max-w-[220px]">
-                  Ask me to explain a concept, help with a problem, or suggest what to study next.
-                </p>
+                <h3 className="text-sm font-headline font-semibold text-on-surface">
+                  AI Tutor
+                </h3>
+                <span className="text-[10px] text-emerald-400 font-medium">
+                  Context: {taskCount} task{taskCount !== 1 ? "s" : ""} loaded
+                </span>
               </div>
             </div>
-          )}
+            {onClose && (
+              <button
+                onClick={onClose}
+                className="text-outline hover:text-on-surface transition-colors"
+                aria-label="Close AI Tutor"
+              >
+                <X size={18} />
+              </button>
+            )}
+          </div>
 
-          {messages.map((msg, i) => (
-            <div key={i} className={`flex flex-col ${msg.role === "user" ? "items-end" : "items-start"}`}>
-              <span className="text-[10px] font-bold uppercase tracking-widest text-outline mb-1">
-                {msg.role === "assistant" ? "ASSISTANT" : "YOU"}
-              </span>
-              {msg.role === "assistant" ? (
-                <div className="bg-surface-container-high rounded-2xl rounded-tl-sm px-4 py-3 max-w-[90%]">
-                  {msg.content ? (
-                    <MessageContent content={msg.content} />
-                  ) : (
-                    <LoadingDots />
-                  )}
-                </div>
-              ) : (
-                <div
-                  className="rounded-2xl rounded-tr-sm px-4 py-3 max-w-[90%] border"
-                  style={{
-                    backgroundColor: `${pillarColor}1a`,
-                    borderColor: `${pillarColor}30`,
-                  }}
-                >
-                  <p className="text-sm text-on-surface whitespace-pre-wrap">{msg.content}</p>
-                </div>
-              )}
+          {/* Provider toggle */}
+          <div className="flex items-center gap-2">
+            <div className="flex bg-surface-container rounded-lg p-0.5 gap-0.5">
+              <button
+                onClick={() => switchProvider("ollama")}
+                className={`flex items-center gap-1.5 px-3 py-1 rounded-md text-[11px] font-medium transition-all ${
+                  provider === "ollama"
+                    ? "bg-surface-container-high text-on-surface shadow-sm"
+                    : "text-outline hover:text-on-surface-variant"
+                }`}
+              >
+                <span>🦙</span>
+                <span>Local</span>
+              </button>
+              <button
+                onClick={() => switchProvider("gemini")}
+                className={`flex items-center gap-1.5 px-3 py-1 rounded-md text-[11px] font-medium transition-all ${
+                  provider === "gemini"
+                    ? "bg-surface-container-high text-on-surface shadow-sm"
+                    : "text-outline hover:text-on-surface-variant"
+                }`}
+              >
+                <span>✦</span>
+                <span>Gemini</span>
+              </button>
             </div>
-          ))}
 
-          <div ref={messagesEndRef} />
+            {/* Ollama model picker */}
+            {provider === "ollama" && (
+              <div className="relative">
+                <button
+                  onClick={() => setModelMenuOpen((o) => !o)}
+                  className="flex items-center gap-1 px-2.5 py-1 rounded-lg bg-surface-container text-[11px] text-on-surface-variant border border-outline-variant/20 hover:border-outline-variant/40 transition-colors"
+                >
+                  <span className="font-mono">{ollamaModel}</span>
+                  <ChevronDown size={10} />
+                </button>
+                {modelMenuOpen && (
+                  <div className="absolute top-full left-0 mt-1 z-50 bg-surface-container-high border border-outline-variant/20 rounded-lg shadow-lg overflow-hidden min-w-[110px]">
+                    {OLLAMA_MODELS.map((m) => (
+                      <button
+                        key={m}
+                        onClick={() => switchModel(m)}
+                        className={`w-full text-left px-3 py-2 text-[11px] font-mono hover:bg-surface-container transition-colors ${
+                          m === ollamaModel ? "text-on-surface font-semibold" : "text-on-surface-variant"
+                        }`}
+                      >
+                        {m}
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
         </div>
 
-        {/* Input area */}
-        <div className="p-4 border-t border-outline-variant/10 flex-shrink-0">
-          {/* Quick chips (only when empty) */}
-          {isEmpty && quickChips.length > 0 && (
-            <div className="flex gap-2 flex-wrap mb-3">
-              {quickChips.slice(0, 3).map((prompt) => (
-                <button
-                  key={prompt}
-                  onClick={() => {
-                    setInput(prompt);
-                    textareaRef.current?.focus();
-                  }}
-                  className="text-[11px] px-3 py-1 rounded-full bg-surface-container-high text-on-surface-variant border border-outline-variant/20 hover:border-primary/40 transition-colors"
-                >
-                  {prompt}
-                </button>
-              ))}
-            </div>
-          )}
+        {/* Messages + input wrapper */}
+        <div className="flex-1 relative overflow-hidden">
+          {/* Scrollable messages */}
+          <div className="absolute inset-0 overflow-y-auto p-4 pb-28 space-y-4">
+            {isLoading && (
+              <div className="flex items-center gap-2 text-outline text-sm">
+                <LoadingDots />
+                Loading conversation…
+              </div>
+            )}
 
-          <form onSubmit={handleSubmit} className="flex gap-2 items-end">
-            <textarea
-              ref={textareaRef}
-              value={input}
-              onChange={(e) => setInput(e.target.value)}
-              onKeyDown={handleKeyDown}
-              placeholder="Ask anything…"
-              rows={1}
-              disabled={isStreaming}
-              className="flex-1 resize-none bg-surface-container-high border border-outline-variant/20 rounded-xl px-4 py-2.5 text-sm text-on-surface placeholder-outline focus:outline-none focus:border-primary/40 disabled:opacity-50 min-h-[40px] max-h-[120px]"
-            />
-            <button
-              type="submit"
-              disabled={!input.trim() || isStreaming}
-              className="flex-shrink-0 w-10 h-10 rounded-xl flex items-center justify-center transition-colors disabled:opacity-40"
-              style={{
-                backgroundColor: input.trim() && !isStreaming ? pillarColor : "#3f3f46",
-              }}
-            >
-              {isStreaming ? (
-                <Square size={14} color="white" fill="white" />
-              ) : (
-                <Send size={14} color="white" />
-              )}
-            </button>
-          </form>
+            {isEmpty && (
+              <div className="h-full flex flex-col items-center justify-center text-center gap-4 py-8">
+                <div
+                  className="w-12 h-12 rounded-xl flex items-center justify-center"
+                  style={{ backgroundColor: `${pillarColor}15` }}
+                >
+                  <Sparkles size={24} style={{ color: pillarColor }} />
+                </div>
+                <div>
+                  <p className="text-on-surface-variant font-medium text-sm">
+                    Your {pillarLabel} tutor
+                  </p>
+                  <p className="text-outline text-xs mt-1 max-w-[220px]">
+                    Ask me to explain a concept, help with a problem, or suggest what to study next.
+                  </p>
+                </div>
+              </div>
+            )}
+
+            {messages.map((msg, i) => (
+              <div key={i} className={`flex flex-col ${msg.role === "user" ? "items-end" : "items-start"}`}>
+                <span className="text-[10px] font-bold uppercase tracking-widest text-outline mb-1">
+                  {msg.role === "assistant" ? "ASSISTANT" : "YOU"}
+                </span>
+                {msg.role === "assistant" ? (
+                  <div className="bg-surface-container-high rounded-2xl rounded-tl-sm px-4 py-3 max-w-[90%]">
+                    {msg.content ? (
+                      <MessageContent content={msg.content} />
+                    ) : (
+                      <LoadingDots />
+                    )}
+                  </div>
+                ) : (
+                  <div
+                    className="rounded-2xl rounded-tr-sm px-4 py-3 max-w-[90%] border"
+                    style={{
+                      backgroundColor: `${pillarColor}1a`,
+                      borderColor: `${pillarColor}30`,
+                    }}
+                  >
+                    <p className="text-sm text-on-surface whitespace-pre-wrap">{msg.content}</p>
+                  </div>
+                )}
+              </div>
+            ))}
+
+            <div ref={messagesEndRef} />
+          </div>
+
+          {/* Frosted glass input bar */}
+          <div className="absolute bottom-0 left-0 right-0 backdrop-blur-xl bg-surface/80 border-t border-outline-variant/10 p-4">
+            {/* Quick chips (only when empty) */}
+            {isEmpty && quickChips.length > 0 && (
+              <div className="flex gap-2 flex-wrap mb-3">
+                {quickChips.slice(0, 3).map((prompt) => (
+                  <button
+                    key={prompt}
+                    onClick={() => {
+                      setInput(prompt);
+                      textareaRef.current?.focus();
+                    }}
+                    className="text-[11px] px-3 py-1 rounded-full bg-surface-container-high text-on-surface-variant border border-outline-variant/20 hover:border-primary/40 transition-colors"
+                  >
+                    {prompt}
+                  </button>
+                ))}
+              </div>
+            )}
+
+            <form onSubmit={handleSubmit} className="flex gap-2 items-end">
+              <textarea
+                ref={textareaRef}
+                value={input}
+                onChange={(e) => setInput(e.target.value)}
+                onKeyDown={handleKeyDown}
+                placeholder="Ask anything…"
+                rows={1}
+                disabled={isStreaming}
+                className="flex-1 resize-none bg-surface-container-high border border-outline-variant/20 rounded-xl px-4 py-2.5 text-sm text-on-surface placeholder-outline focus:outline-none focus:border-primary/40 disabled:opacity-50 min-h-[40px] max-h-[120px]"
+              />
+              <button
+                type="submit"
+                disabled={!input.trim() || isStreaming}
+                className="flex-shrink-0 w-10 h-10 rounded-xl flex items-center justify-center transition-colors disabled:opacity-40"
+                style={{
+                  backgroundColor: input.trim() && !isStreaming ? pillarColor : "#3f3f46",
+                }}
+              >
+                {isStreaming ? (
+                  <Square size={14} color="white" fill="white" />
+                ) : (
+                  <Send size={14} color="white" />
+                )}
+              </button>
+            </form>
+          </div>
         </div>
       </>
     );
@@ -445,7 +541,7 @@ export function StudyAssistant({
               </button>
             </form>
             <p className="text-xs text-outline mt-1.5 px-1">
-              Powered by Claude · Responses may not always be accurate
+              {provider === "ollama" ? `🦙 ${ollamaModel} (local)` : "✦ Gemini"} · Responses may not always be accurate
             </p>
           </div>
         </div>

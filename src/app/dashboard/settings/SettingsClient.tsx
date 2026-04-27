@@ -1,6 +1,8 @@
 "use client";
 
 import { useState, useEffect, useRef } from "react";
+import { useSession } from "next-auth/react";
+import { useToast } from "@/components/ui/Toast";
 import Image from "next/image";
 import {
   User, Layout, Bell, Shield,
@@ -27,6 +29,8 @@ function Toggle({ checked, onChange }: { checked: boolean; onChange: () => void 
 }
 
 export function SettingsClient({ name, email, avatarUrl, pillars }: Props) {
+  const { update: updateSession } = useSession();
+  const { toast } = useToast();
   const [activeTab, setActiveTab] = useState<Tab>("profile");
 
   // Profile
@@ -56,7 +60,7 @@ export function SettingsClient({ name, email, avatarUrl, pillars }: Props) {
 
   useEffect(() => {
     try {
-      const raw = localStorage.getItem("myfi-prefs");
+      const raw = localStorage.getItem("meridian-prefs");
       if (raw) {
         const p = JSON.parse(raw);
         if (p.theme) { setTheme(p.theme); applyTheme(p.theme as Theme); }
@@ -64,7 +68,7 @@ export function SettingsClient({ name, email, avatarUrl, pillars }: Props) {
         if (typeof p.playMusic === "boolean") setPlayMusic(p.playMusic);
         if (typeof p.autoArchive === "boolean") setAutoArchive(p.autoArchive);
       }
-      const ov = localStorage.getItem("myfi-icon-overrides");
+      const ov = localStorage.getItem("meridian-icon-overrides");
       if (ov) setIconOverrides(JSON.parse(ov));
     } catch {}
   }, []);
@@ -79,29 +83,50 @@ export function SettingsClient({ name, email, avatarUrl, pillars }: Props) {
     }
 
     const doc = document as Document & { startViewTransition?: (cb: () => void) => void };
-    doc.startViewTransition ? doc.startViewTransition(switchTheme) : switchTheme();
+    if (doc.startViewTransition) {
+      doc.startViewTransition(switchTheme);
+    } else {
+      switchTheme();
+    }
   }
 
   function savePrefs(updates: object) {
     try {
-      const cur = JSON.parse(localStorage.getItem("myfi-prefs") ?? "{}");
-      localStorage.setItem("myfi-prefs", JSON.stringify({ ...cur, ...updates }));
+      const cur = JSON.parse(localStorage.getItem("meridian-prefs") ?? "{}");
+      localStorage.setItem("meridian-prefs", JSON.stringify({ ...cur, ...updates }));
     } catch {}
   }
 
-  function handleAvatarFile(e: React.ChangeEvent<HTMLInputElement>) {
+  async function handleAvatarFile(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
     if (!file) return;
-    const url = URL.createObjectURL(file);
-    setPreviewAvatar(url);
-    window.dispatchEvent(new CustomEvent("avatar-changed", { detail: { url } }));
-    // TODO: upload to Supabase Storage, then PATCH /api/user
+    // Optimistic preview
+    const blobUrl = URL.createObjectURL(file);
+    setPreviewAvatar(blobUrl);
+    window.dispatchEvent(new CustomEvent("avatar-changed", { detail: { url: blobUrl } }));
+
+    // Upload to Supabase Storage
+    const formData = new FormData();
+    formData.append("file", file);
+    const res = await fetch("/api/user/avatar", { method: "POST", body: formData });
+    if (res.ok) {
+      const { url } = await res.json() as { url: string };
+      setPreviewAvatar(url);
+      window.dispatchEvent(new CustomEvent("avatar-changed", { detail: { url } }));
+      await updateSession();
+    }
   }
 
-  function handleSaveProfile() {
+  async function handleSaveProfile() {
+    await fetch("/api/user", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ display_name: displayName }),
+    });
+    await updateSession();
     setProfileSaved(true);
     setTimeout(() => setProfileSaved(false), 2500);
-    // TODO: PATCH /api/user { displayName }
+    toast("Profile saved");
   }
 
   async function handleSavePillar(pillarId: string) {
@@ -117,6 +142,14 @@ export function SettingsClient({ name, email, avatarUrl, pillars }: Props) {
       setPillarBases((b) => ({ ...b, [pillarId]: { ...draft } }));
       setPillarSaved((s) => ({ ...s, [pillarId]: true }));
       setTimeout(() => setPillarSaved((s) => ({ ...s, [pillarId]: false })), 2500);
+      toast("Pillar saved");
+      // Notify sidebar so label updates without a page refresh
+      const pillar = pillars.find((p) => p.id === pillarId);
+      if (pillar) {
+        window.dispatchEvent(new CustomEvent("pillar-label-changed", {
+          detail: { slug: pillar.slug, label: draft.label, color: draft.color },
+        }));
+      }
     } finally {
       setPillarSaving((s) => ({ ...s, [pillarId]: false }));
     }
@@ -127,7 +160,7 @@ export function SettingsClient({ name, email, avatarUrl, pillars }: Props) {
     setIconOverrides(updated);
     setOpenPickerFor(null);
     try {
-      localStorage.setItem("myfi-icon-overrides", JSON.stringify(updated));
+      localStorage.setItem("meridian-icon-overrides", JSON.stringify(updated));
       window.dispatchEvent(new CustomEvent("icon-overrides-changed"));
     } catch {}
   }
@@ -146,17 +179,17 @@ export function SettingsClient({ name, email, avatarUrl, pillars }: Props) {
   ];
 
   return (
-    <div className="flex-1 flex min-h-0 overflow-hidden">
-      {/* ── Tab sidebar ─────────────────────────────────────────────── */}
-      <nav className="w-56 flex-shrink-0 border-r border-outline-variant/10 py-8 px-3 space-y-1">
-        <p className="text-[10px] font-bold uppercase tracking-widest text-outline px-3 mb-4">Settings</p>
+    <div className="flex-1 flex flex-col md:flex-row min-h-0 overflow-hidden">
+      {/* ── Tab nav ─────────────────────────────────────────────────── */}
+      <nav className="flex md:flex-col md:w-56 md:flex-shrink-0 border-b md:border-b-0 md:border-r border-outline-variant/10 md:py-8 md:px-3 md:space-y-1 overflow-x-auto px-3 pt-4 pb-0 gap-1 md:gap-0">
+        <p className="text-[10px] font-bold uppercase tracking-widest text-outline px-3 mb-2 md:mb-4 hidden md:block">Settings</p>
         {TABS.map(({ key, label, icon: Icon }) => (
           <button
             key={key}
             onClick={() => setActiveTab(key)}
-            className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm transition-colors ${
+            className={`flex items-center gap-2 md:gap-3 px-3 py-2 md:py-2.5 rounded-xl text-sm transition-colors whitespace-nowrap flex-shrink-0 md:w-full ${
               activeTab === key
-                ? "bg-primary/10 text-primary font-semibold"
+                ? "bg-primary/10 text-primary font-semibold border-b-2 md:border-b-0 border-primary"
                 : "text-on-surface-variant hover:text-on-surface hover:bg-surface-container"
             }`}
           >
@@ -167,19 +200,19 @@ export function SettingsClient({ name, email, avatarUrl, pillars }: Props) {
       </nav>
 
       {/* ── Content ──────────────────────────────────────────────────── */}
-      <div className="flex-1 overflow-y-auto p-10">
+      <div className="flex-1 overflow-y-auto p-4 md:p-10">
         <div className="max-w-2xl w-full space-y-8">
 
           {/* ── PROFILE ─────────────────────────────────────────────── */}
           {activeTab === "profile" && (
             <>
               <div>
-                <h1 className="text-4xl font-extrabold font-headline tracking-tight text-on-surface">Profile</h1>
+                <h1 className="text-2xl md:text-4xl font-extrabold font-headline tracking-tight text-on-surface">Profile</h1>
                 <p className="text-on-surface-variant text-sm mt-1">Manage your identity and appearance.</p>
               </div>
 
-              <div className="bg-surface-container-low rounded-2xl border border-outline-variant/10 p-8">
-                <div className="flex items-start gap-8">
+              <div className="bg-surface-container-low rounded-2xl border border-outline-variant/10 p-5 md:p-8">
+                <div className="flex flex-col sm:flex-row items-start gap-6 md:gap-8">
                   <div className="relative flex-shrink-0">
                     <div className="w-20 h-20 rounded-2xl bg-surface-container-highest overflow-hidden">
                       {previewAvatar ? (
@@ -244,7 +277,7 @@ export function SettingsClient({ name, email, avatarUrl, pillars }: Props) {
           {activeTab === "workspace" && (
             <>
               <div>
-                <h1 className="text-4xl font-extrabold font-headline tracking-tight text-on-surface">Workspace</h1>
+                <h1 className="text-2xl md:text-4xl font-extrabold font-headline tracking-tight text-on-surface">Workspace</h1>
                 <p className="text-on-surface-variant text-sm mt-1">Customize your learning pillars.</p>
               </div>
 
@@ -262,8 +295,8 @@ export function SettingsClient({ name, email, avatarUrl, pillars }: Props) {
                   const isPickerOpen = openPickerFor === pillar.slug;
 
                   return (
-                    <div key={pillar.id} className="bg-surface-container-low rounded-2xl border border-outline-variant/10 p-5">
-                      <div className="flex items-center gap-4">
+                    <div key={pillar.id} className="bg-surface-container-low rounded-2xl border border-outline-variant/10 p-4">
+                      <div className="flex flex-wrap items-center gap-3">
                         {/* Icon picker */}
                         <div className="relative">
                           <button
@@ -330,10 +363,10 @@ export function SettingsClient({ name, email, avatarUrl, pillars }: Props) {
           {activeTab === "notifications" && (
             <>
               <div>
-                <h1 className="text-4xl font-extrabold font-headline tracking-tight text-on-surface">Notifications</h1>
+                <h1 className="text-2xl md:text-4xl font-extrabold font-headline tracking-tight text-on-surface">Notifications</h1>
                 <p className="text-on-surface-variant text-sm mt-1">Configure your focus environment.</p>
               </div>
-              <div className="bg-surface-container-low rounded-2xl border border-outline-variant/10 p-8">
+              <div className="bg-surface-container-low rounded-2xl border border-outline-variant/10 p-5 md:p-8">
                 <div className="flex items-start justify-between mb-7">
                   <div>
                     <h2 className="text-xl font-headline font-bold text-on-surface">Focus Mode</h2>
@@ -365,7 +398,7 @@ export function SettingsClient({ name, email, avatarUrl, pillars }: Props) {
           {activeTab === "security" && (
             <>
               <div>
-                <h1 className="text-4xl font-extrabold font-headline tracking-tight text-on-surface">Security</h1>
+                <h1 className="text-2xl md:text-4xl font-extrabold font-headline tracking-tight text-on-surface">Security</h1>
                 <p className="text-on-surface-variant text-sm mt-1">Manage account security and data.</p>
               </div>
               <div className="rounded-2xl border border-red-500/20 bg-red-500/5 p-8 flex items-center justify-between gap-8">

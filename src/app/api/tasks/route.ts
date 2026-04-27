@@ -1,6 +1,6 @@
 import { withSession } from "@/lib/api/withSession";
 import { getSupabaseAdminClient } from "@/lib/supabase/admin";
-import type { CreateTaskInput } from "@/lib/types";
+import { CreateTaskSchema } from "@/lib/api/schemas";
 
 export const GET = withSession(async (req, userId) => {
   const { searchParams } = new URL(req.url);
@@ -48,14 +48,11 @@ export const GET = withSession(async (req, userId) => {
 });
 
 export const POST = withSession(async (req, userId) => {
-  const body: CreateTaskInput = await req.json();
-
-  if (!body.pillar_id || !body.title?.trim()) {
-    return Response.json(
-      { error: "pillar_id and title are required" },
-      { status: 400 }
-    );
+  const parsed = CreateTaskSchema.safeParse(await req.json());
+  if (!parsed.success) {
+    return Response.json({ error: parsed.error.issues[0]?.message ?? "Invalid input" }, { status: 400 });
   }
+  const body = parsed.data;
 
   const supabase = getSupabaseAdminClient();
 
@@ -87,6 +84,7 @@ export const POST = withSession(async (req, userId) => {
       notes: body.notes ?? null,
       advisory_minutes: body.advisory_minutes ?? null,
       due_date: body.due_date ?? null,
+      recurrence_rule: body.recurrence_rule ?? null,
       position: count ?? 0,
     })
     .select()

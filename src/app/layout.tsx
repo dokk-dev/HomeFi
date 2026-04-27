@@ -1,8 +1,9 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import { Manrope, Inter } from "next/font/google";
 import localFont from "next/font/local";
 import "./globals.css";
 import { SessionProvider } from "@/components/providers/SessionProvider";
+import { ToastProvider } from "@/components/ui/Toast";
 
 const manrope = Manrope({
   subsets: ["latin"],
@@ -24,9 +25,25 @@ const geistMono = localFont({
   weight: "100 900",
 });
 
+export const viewport: Viewport = {
+  themeColor: "#0f0f10",
+  width: "device-width",
+  initialScale: 1,
+  maximumScale: 1,
+};
+
 export const metadata: Metadata = {
-  title: "MyFi — Personal Productivity OS",
-  description: "Organize your daily life across CS/AI, Music Tech, Russian, Hebrew, and Career.",
+  title: "Meridian — Personal Learning OS",
+  description: "Organize your learning across pillars, get AI coaching, and build mastery.",
+  manifest: "/manifest.json",
+  appleWebApp: {
+    capable: true,
+    statusBarStyle: "black-translucent",
+    title: "Meridian",
+  },
+  other: {
+    "mobile-web-app-capable": "yes",
+  },
 };
 
 export default function RootLayout({
@@ -43,10 +60,10 @@ export default function RootLayout({
             the default `dark` class if the user chose light or auto+light */}
         <script
           dangerouslySetInnerHTML={{
-            __html: `try{var p=JSON.parse(localStorage.getItem('myfi-prefs')||'{}');if(p.theme==='light')document.documentElement.classList.remove('dark');else if(p.theme==='auto'&&!window.matchMedia('(prefers-color-scheme: dark)').matches)document.documentElement.classList.remove('dark')}catch(e){}`,
+            __html: `try{var p=JSON.parse(localStorage.getItem('meridian-prefs')||'{}');if(p.theme==='light')document.documentElement.classList.remove('dark');else if(p.theme==='auto'&&!window.matchMedia('(prefers-color-scheme: dark)').matches)document.documentElement.classList.remove('dark')}catch(e){}`,
           }}
         />
-        <SessionProvider>{children}</SessionProvider>
+        <SessionProvider><ToastProvider>{children}</ToastProvider></SessionProvider>
       </body>
     </html>
   );

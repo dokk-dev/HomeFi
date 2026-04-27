@@ -137,8 +137,14 @@ export function FocusTimer({ onClose }: Props) {
         opacity: fading ? 0 : 1,
       }}
     >
+      {/* ── Always-on dark background ─────────────────────────────────── */}
+      <div
+        className="absolute inset-0"
+        style={{ background: "radial-gradient(ellipse at 30% 50%, #1e1b4b 0%, #0e0e10 60%)" }}
+      />
+
       {/* ── Video background ──────────────────────────────────────────── */}
-      {activePlaylist ? (
+      {activePlaylist && (
         <iframe
           ref={iframeRef}
           key={activePlaylist}
@@ -151,22 +157,12 @@ export function FocusTimer({ onClose }: Props) {
             top: "50%",
             left: "50%",
             transform: "translate(-50%, -50%)",
-            /* Always cover the viewport regardless of aspect ratio */
             width: "100vw",
-            height: "56.25vw",   /* 16:9 */
+            height: "56.25vw",
             minHeight: "100vh",
-            minWidth: "177.78vh", /* 16:9 inverted */
+            minWidth: "177.78vh",
             border: "none",
             pointerEvents: "none",
-          }}
-        />
-      ) : (
-        /* Fallback gradient when no playlist is selected */
-        <div
-          className="absolute inset-0"
-          style={{
-            background:
-              "radial-gradient(ellipse at 30% 50%, #1e1b4b 0%, #0e0e10 60%)",
           }}
         />
       )}

@@ -11,6 +11,7 @@ export const PATCH = withSessionAndParams<Params>(async (req, { params }, userId
   if (typeof body.label === "string") updateData.label = body.label.trim();
   if (typeof body.color === "string") updateData.color = body.color;
   if (typeof body.description === "string") updateData.description = body.description;
+  if (typeof body.mastery === "number") updateData.mastery = Math.max(0, Math.min(100, Math.round(body.mastery)));
 
   if (Object.keys(updateData).length === 0) {
     return Response.json({ error: "No fields to update" }, { status: 400 });

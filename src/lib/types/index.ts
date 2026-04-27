@@ -19,6 +19,13 @@ export interface Pillar {
   created_at: string;
   task_count?: number;
   completed_count?: number;
+  streak?: number;
+}
+
+export interface RecurrenceRule {
+  days: string[];
+  recurrenceType: "perpetual" | "temporary" | "raincheck";
+  endsAt: string | null;
 }
 
 export interface Task {
@@ -32,6 +39,7 @@ export interface Task {
   position: number;
   completed_at: string | null;
   due_date: string | null;
+  recurrence_rule: RecurrenceRule | null;
   created_at: string;
   updated_at: string;
   steps?: Step[];
@@ -53,6 +61,7 @@ export interface CreateTaskInput {
   notes?: string;
   advisory_minutes?: number;
   due_date?: string;
+  recurrence_rule?: RecurrenceRule | null;
 }
 
 export interface UpdateTaskInput {
@@ -62,6 +71,7 @@ export interface UpdateTaskInput {
   advisory_minutes?: number;
   position?: number;
   due_date?: string;
+  recurrence_rule?: RecurrenceRule | null;
 }
 
 export interface CreateStepInput {

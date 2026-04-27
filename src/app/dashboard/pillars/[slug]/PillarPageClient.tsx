@@ -30,14 +30,9 @@ export function PillarPageClient({ pillar, tasks, mastery, completed, total }: P
   const taskListRef = useRef<TaskListHandle>(null);
 
   useEffect(() => {
-    // Slide panel in shortly after mount
-    const panelTimer = setTimeout(() => setTutorOpen(true), 60);
     // Zap pops in after TopBar Zap has finished exiting
     const zapTimer = setTimeout(() => setZapReady(true), 280);
-    return () => {
-      clearTimeout(panelTimer);
-      clearTimeout(zapTimer);
-    };
+    return () => clearTimeout(zapTimer);
   }, []);
 
   return (
@@ -45,10 +40,10 @@ export function PillarPageClient({ pillar, tasks, mastery, completed, total }: P
       {/* ── Main scrollable content ───────────────────────────────────────── */}
       <div
         className={`flex-1 overflow-y-auto transition-[margin] duration-[320ms] ease-[cubic-bezier(0.4,0,0.2,1)] ${
-          tutorOpen ? "mr-96" : ""
+          tutorOpen ? "md:mr-96" : ""
         }`}
       >
-        <div className="p-10 max-w-2xl">
+        <div className="p-4 md:p-10 max-w-2xl">
           {/* ACTIVE PILLAR header */}
           <div className="mb-8">
             <div className="flex items-center gap-3 mb-2">
@@ -64,7 +59,7 @@ export function PillarPageClient({ pillar, tasks, mastery, completed, total }: P
               </span>
             </div>
 
-            <h2 className="text-5xl font-extrabold font-headline tracking-tighter text-on-surface leading-none mb-3">
+            <h2 className="text-3xl md:text-5xl font-extrabold font-headline tracking-tighter text-on-surface leading-none mb-3">
               {pillar.label}
             </h2>
 
@@ -115,7 +110,7 @@ export function PillarPageClient({ pillar, tasks, mastery, completed, total }: P
 
       {/* ── AI Tutor right panel ───────────────────────────────────────────── */}
       <aside
-        className="fixed right-0 top-16 w-96 h-[calc(100vh-4rem)] border-l border-outline-variant/10 bg-surface-container flex flex-col z-30"
+        className="fixed right-0 top-16 w-full md:w-96 h-[calc(100vh-4rem)] border-l border-outline-variant/10 bg-surface-container flex flex-col z-30"
         style={{
           transform: tutorOpen ? "translateX(0)" : "translateX(100%)",
           transition: "transform 320ms cubic-bezier(0.4,0,0.2,1)",
@@ -152,7 +147,7 @@ export function PillarPageClient({ pillar, tasks, mastery, completed, total }: P
       {tutorOpen && (
         <button
           onClick={() => taskListRef.current?.openAddTask()}
-          className="fixed bottom-8 z-30 w-12 h-12 rounded-full shadow-lg flex items-center justify-center hover:scale-110"
+          className="fixed bottom-8 z-30 w-12 h-12 rounded-full shadow-lg items-center justify-center hover:scale-110 hidden md:flex"
           style={{
             right: "416px",
             backgroundColor: pillar.color,

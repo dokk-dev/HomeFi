@@ -3,29 +3,24 @@
 import { useState, useEffect, useRef } from "react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { Search, Zap, X, Check } from "lucide-react";
+import { Search, Zap, X, Check, Clock, CalendarDays } from "lucide-react";
+import { useSession } from "next-auth/react";
+import Image from "next/image";
 
 interface PillarOption { id: string; slug: string; label: string; color: string; }
 
-function QuickAddModal({ onClose }: { onClose: () => void }) {
+function QuickAddModal({ onClose, pillars: initialPillars }: { onClose: () => void; pillars: PillarOption[] }) {
   const router = useRouter();
   const [title, setTitle] = useState("");
-  const [pillars, setPillars] = useState<PillarOption[]>([]);
-  const [selectedId, setSelectedId] = useState("");
+  const [pillars] = useState<PillarOption[]>(initialPillars);
+  const [selectedId, setSelectedId] = useState(initialPillars[0]?.id ?? "");
+  const [minutes, setMinutes] = useState("");
+  const [dueDate, setDueDate] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [done, setDone] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
-    fetch("/api/pillars")
-      .then((r) => r.json())
-      .then((data) => {
-        if (Array.isArray(data) && data.length > 0) {
-          setPillars(data);
-          setSelectedId(data[0].id);
-        }
-      });
-
     const timer = setTimeout(() => inputRef.current?.focus(), 30);
 
     function onKey(e: KeyboardEvent) {
@@ -44,7 +39,12 @@ function QuickAddModal({ onClose }: { onClose: () => void }) {
     await fetch("/api/tasks", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ title: title.trim(), pillar_id: selectedId }),
+      body: JSON.stringify({
+        title: title.trim(),
+        pillar_id: selectedId,
+        advisory_minutes: minutes ? parseInt(minutes, 10) : undefined,
+        due_date: dueDate || undefined,
+      }),
     });
     setSubmitting(false);
     setDone(true);
@@ -107,6 +107,30 @@ function QuickAddModal({ onClose }: { onClose: () => void }) {
           </div>
         )}
 
+        {/* Optional fields */}
+        <div className="flex gap-2 mb-5">
+          <div className="relative flex-1">
+            <Clock size={12} className="absolute left-3 top-1/2 -translate-y-1/2 text-outline pointer-events-none" />
+            <input
+              type="number"
+              value={minutes}
+              onChange={(e) => setMinutes(e.target.value)}
+              placeholder="Minutes"
+              min={1}
+              className="w-full bg-surface-container-highest rounded-lg pl-8 pr-3 py-2 text-on-surface text-xs border border-outline-variant/20 focus:outline-none focus:ring-1 focus:ring-primary/40 transition-all placeholder-outline"
+            />
+          </div>
+          <div className="relative flex-1">
+            <CalendarDays size={12} className="absolute left-3 top-1/2 -translate-y-1/2 text-outline pointer-events-none" />
+            <input
+              type="date"
+              value={dueDate}
+              onChange={(e) => setDueDate(e.target.value)}
+              className="w-full bg-surface-container-highest rounded-lg pl-8 pr-3 py-2 text-on-surface text-xs border border-outline-variant/20 focus:outline-none focus:ring-1 focus:ring-primary/40 transition-all"
+            />
+          </div>
+        </div>
+
         {/* submit */}
         <button
           onClick={handleSubmit}
@@ -129,16 +153,50 @@ export function TopBar() {
   const pathname = usePathname();
   const isPillarPage = pathname.startsWith("/dashboard/pillars/");
   const [quickAddOpen, setQuickAddOpen] = useState(false);
+  const [pillars, setPillars] = useState<PillarOption[]>([]);
+  const { data: session } = useSession();
+
+  useEffect(() => {
+    fetch("/api/pillars")
+      .then((r) => r.json())
+      .then((data) => { if (Array.isArray(data)) setPillars(data); })
+      .catch(() => {});
+  }, []);
 
   const tabs = [
     { label: "Focus", href: "/dashboard" },
     { label: "Tasks", href: "/dashboard/tasks" },
+    { label: "Stats", href: "/dashboard/stats" },
     { label: "Archive", href: "/dashboard/archive" },
   ];
 
   return (
     <>
-      <header className="sticky top-0 z-40 h-16 backdrop-blur-xl bg-surface/60 flex items-center justify-between px-8 border-b border-outline-variant/10">
+      <header className="sticky top-0 z-40 h-16 backdrop-blur-xl bg-surface/60 flex items-center justify-between px-4 md:px-8 border-b border-outline-variant/10">
+        {/* Avatar (mobile only) */}
+        <Link
+          href="/dashboard/settings"
+          className="md:hidden mr-3 flex-shrink-0"
+          aria-label="Settings"
+        >
+          <div className="w-8 h-8 rounded-full overflow-hidden bg-surface-container-highest flex items-center justify-center">
+            {session?.user?.image ? (
+              <Image
+                src={session.user.image}
+                alt="Avatar"
+                width={32}
+                height={32}
+                className="w-full h-full object-cover"
+                unoptimized
+              />
+            ) : (
+              <span className="text-xs font-bold text-primary">
+                {(session?.user?.name ?? "?")[0].toUpperCase()}
+              </span>
+            )}
+          </div>
+        </Link>
+
         {/* Command search */}
         <div className="flex items-center gap-4 flex-1 max-w-md">
           <div className="relative w-full">
@@ -155,7 +213,7 @@ export function TopBar() {
         <div className="flex items-center ml-auto">
           {/* Nav labels — nudge right as Zap leaves */}
           <nav
-            className="flex gap-6"
+            className="hidden md:flex gap-6"
             style={{
               transform: isPillarPage ? "translateX(6px)" : "translateX(0)",
               transition: "transform 280ms ease",
@@ -210,7 +268,7 @@ export function TopBar() {
         </div>
       </header>
 
-      {quickAddOpen && <QuickAddModal onClose={() => setQuickAddOpen(false)} />}
+      {quickAddOpen && <QuickAddModal onClose={() => setQuickAddOpen(false)} pillars={pillars} />}
     </>
   );
 }

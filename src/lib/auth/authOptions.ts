@@ -33,7 +33,20 @@ export const authOptions: NextAuthOptions = {
     error: "/auth/error",
   },
   callbacks: {
-    async jwt({ token, user, account }) {
+    async jwt({ token, user, account, trigger }) {
+      // Refresh profile data when client calls update() (e.g. after avatar/name change)
+      if (trigger === "update" && token.supabaseUserId) {
+        const supabase = getSupabaseAdminClient();
+        const { data } = await supabase
+          .from("profiles")
+          .select("display_name, avatar_url")
+          .eq("id", token.supabaseUserId as string)
+          .single();
+        if (data?.display_name) token.name = data.display_name;
+        if (data?.avatar_url) token.picture = data.avatar_url;
+        return token;
+      }
+
       // Only runs on sign-in (account is present)
       if (account && user) {
         const supabase = getSupabaseAdminClient();
@@ -42,25 +55,27 @@ export const authOptions: NextAuthOptions = {
         // Check if profile already exists
         const { data: existing, error: lookupError } = await supabase
           .from("profiles")
-          .select("id")
+          .select("id, avatar_url")
           .eq("email", email)
           .single();
 
         if (lookupError && lookupError.code !== "PGRST116") {
-          // PGRST116 = no rows found (expected for new users)
           console.error("[AUTH] Profile lookup failed:", lookupError);
         }
 
         if (existing) {
+          // Don't overwrite a custom avatar the user has uploaded
+          const hasCustomAvatar = existing.avatar_url && existing.avatar_url !== user.image;
           await supabase
             .from("profiles")
             .update({
               display_name: user.name ?? email.split("@")[0],
-              avatar_url: user.image ?? null,
+              ...(hasCustomAvatar ? {} : { avatar_url: user.image ?? null }),
             })
             .eq("id", existing.id);
 
           token.supabaseUserId = existing.id;
+          if (hasCustomAvatar) token.picture = existing.avatar_url;
         } else {
           const { data: newProfile, error: insertError } = await supabase
             .from("profiles")
@@ -91,9 +106,9 @@ export const authOptions: NextAuthOptions = {
       return token;
     },
     async session({ session, token }) {
-      if (token.supabaseUserId) {
-        session.user.id = token.supabaseUserId as string;
-      }
+      if (token.supabaseUserId) session.user.id = token.supabaseUserId as string;
+      if (token.name) session.user.name = token.name as string;
+      if (token.picture) session.user.image = token.picture as string;
       return session;
     },
   },

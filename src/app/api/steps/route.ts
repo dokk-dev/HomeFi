@@ -1,16 +1,13 @@
 import { withSession } from "@/lib/api/withSession";
 import { getSupabaseAdminClient } from "@/lib/supabase/admin";
-import type { CreateStepInput } from "@/lib/types";
+import { CreateStepSchema } from "@/lib/api/schemas";
 
 export const POST = withSession(async (req, userId) => {
-  const body: CreateStepInput = await req.json();
-
-  if (!body.task_id || !body.title?.trim()) {
-    return Response.json(
-      { error: "task_id and title are required" },
-      { status: 400 }
-    );
+  const parsed = CreateStepSchema.safeParse(await req.json());
+  if (!parsed.success) {
+    return Response.json({ error: parsed.error.issues[0]?.message ?? "Invalid input" }, { status: 400 });
   }
+  const body = parsed.data;
 
   const supabase = getSupabaseAdminClient();
 
