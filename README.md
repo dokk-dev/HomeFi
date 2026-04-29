@@ -1,31 +1,58 @@
 # Meridian
 
-A personal learning OS. Organize your study into pillars, track tasks, run focus sessions, and get AI coaching with built-in mastery tests.
+A personal learning OS. Organize your study into customizable pillars, track tasks, run focus sessions, and get AI coaching with built-in mastery tests.
+
+## Features
+
+- **Configurable pillars** — Create, rename, recolor, and pick icons for any number of focus areas (study, projects, career, hobbies — whatever fits your life)
+- **Tasks + steps** — Break work down, mark progress, schedule with due dates and recurrence
+- **Focus session** — Surfaces the most relevant task to work on next
+- **AI Tutor** — Per-pillar chat that knows your tasks; powered by Gemini (cloud) or Ollama (local, offline)
+- **Weekly momentum** — Visualizes completions across the current week
+- **Onboarding wizard** — First-run UI walkthrough plus a CLI setup script for env vars
 
 ## Stack
 
-- **Next.js 14** (App Router)
-- **Supabase** (database + storage)
-- **NextAuth** (GitHub + Google OAuth)
-- **Gemini AI** (AI tutor + quiz generation)
+- **Next.js 14** (App Router) + **React 18** + **TypeScript**
+- **Supabase** (Postgres + RLS-bypass admin client server-side)
+- **NextAuth** (GitHub + Google OAuth, JWT sessions)
+- **Gemini AI** + optional **Ollama** local models
 - **Tailwind CSS**
+- **Zod** runtime validation at API boundaries
+- In-memory **rate limiting** (30 req/min per user)
 
 ---
 
-## Setup
+## Quick Start (no terminal required)
 
-### 1. Clone
+> Friendly path for first-time users. You only need [Node.js LTS](https://nodejs.org) installed.
+
+1. Download or clone this repo.
+2. **macOS:** double-click `setup.command`. **Windows:** double-click `setup.bat`.
+3. Follow the prompts (it asks for Supabase keys, OAuth keys, Ollama URL, optional Gemini).
+4. **macOS:** double-click `start.command`. **Windows:** double-click `start.bat`.
+
+The app opens at `http://localhost:3000`. The start script will auto-install dependencies and re-run setup if `.env.local` is missing.
+
+> First time on macOS, Gatekeeper may block `.command` files. Right-click → **Open** once to approve them.
+
+You'll still need a Supabase project with the schema applied (see below) and at least one OAuth provider registered before sign-in works.
+
+---
+
+## Manual Setup (terminal)
+
+### 1. Clone + install
 
 ```bash
-git clone <repo-url> meridian
+git clone https://github.com/dokk-dev/HomeFi.git meridian
 cd meridian
 npm install
 ```
 
 ### 2. Supabase
 
-1. Create a free project at [supabase.com](https://supabase.com)
-2. Go to **SQL Editor** and run the following:
+Create a free project at [supabase.com](https://supabase.com), then in **SQL Editor** run:
 
 ```sql
 -- Profiles
@@ -103,62 +130,88 @@ create trigger tasks_updated_at
   for each row execute function update_updated_at();
 ```
 
-3. In **Project Settings → API**, copy:
-   - Project URL → `NEXT_PUBLIC_SUPABASE_URL`
-   - anon key → `NEXT_PUBLIC_SUPABASE_ANON_KEY`
-   - service_role key → `SUPABASE_SERVICE_ROLE_KEY`
+In **Project Settings → API**, copy:
+- Project URL → `NEXT_PUBLIC_SUPABASE_URL`
+- anon key → `NEXT_PUBLIC_SUPABASE_ANON_KEY`
+- service_role key → `SUPABASE_SERVICE_ROLE_KEY`
 
-### 3. OAuth
+### 3. OAuth (at least one provider required)
 
 **GitHub:**
-1. Go to [github.com/settings/developers](https://github.com/settings/developers) → New OAuth App
+1. [github.com/settings/developers](https://github.com/settings/developers) → New OAuth App
 2. Homepage URL: `http://localhost:3000`
 3. Callback URL: `http://localhost:3000/api/auth/callback/github`
-4. Copy Client ID and Client Secret
+4. Copy Client ID + Secret
 
 **Google:**
-1. Go to [console.cloud.google.com](https://console.cloud.google.com) → APIs & Services → Credentials → Create OAuth Client
+1. [console.cloud.google.com](https://console.cloud.google.com) → APIs & Services → Credentials → OAuth Client
 2. Authorized redirect URI: `http://localhost:3000/api/auth/callback/google`
-3. Copy Client ID and Client Secret
+3. Copy Client ID + Secret
 
-### 4. Gemini API key
+### 4. AI provider (pick one or both)
 
-Get a free key at [aistudio.google.com/app/apikey](https://aistudio.google.com/app/apikey)
+- **Gemini** (cloud, free tier) — [aistudio.google.com/app/apikey](https://aistudio.google.com/app/apikey)
+- **Ollama** (local, fully offline) — install from [ollama.com](https://ollama.com), then `ollama serve && ollama pull llama3`
 
 ### 5. Environment
 
+Run the wizard:
+
 ```bash
-cp .env.example .env
-# Fill in all values in .env
+npm run setup
+```
+
+Or copy the template manually:
+
+```bash
+cp .env.example .env.local
+# fill in values
 ```
 
 ### 6. Run
 
 ```bash
 npm run dev
-# Open http://localhost:3000
+# open http://localhost:3000
 ```
 
-Sign in with GitHub or Google — your pillars are created automatically on first login.
+Sign in with GitHub or Google — three starter pillars (Learning / Projects / Career) are created automatically. Customize them at any time in **Settings**.
 
 ---
 
-## Optional: Local AI (Ollama)
+## Project Structure
 
-For fully offline AI responses:
-
-```bash
-# Install Ollama: https://ollama.com
-ollama serve
-ollama pull llama3
 ```
+src/
+├── app/
+│   ├── api/                    Next.js Route Handlers (Zod-validated)
+│   ├── auth/                   Sign-in pages
+│   └── dashboard/
+│       ├── ai-tutor/           Per-pillar AI chat
+│       ├── pillars/[slug]/     Pillar detail + tasks
+│       ├── settings/           Profile + pillar management
+│       └── stats/              Long-term progress
+├── components/
+│   ├── chat/                   StudyAssistant + Gemini/Ollama clients
+│   ├── layout/                 Sidebar, TopBar
+│   ├── onboarding/             First-run modal
+│   ├── pillars/                Pillar grid + cards
+│   └── tasks/                  Task list + focus section
+└── lib/
+    ├── api/                    Schemas (Zod) + middleware (session, rate limit)
+    ├── auth/                   NextAuth options + pillar seeding
+    ├── icons/                  resolveIcon() priority chain
+    ├── supabase/               Admin + browser clients
+    └── types.ts                Shared TS types
 
-In the AI Tutor, switch the provider to **Ollama** in the model selector.
-
----
+scripts/setup.mjs               Interactive .env.local wizard
+setup.command / setup.bat       Double-click wrappers for setup
+start.command / start.bat       Double-click wrappers to launch
+```
 
 ## Notes
 
-- The app is single-tenant by design — each GitHub/Google account gets its own isolated data
-- Gemini free tier is generous enough for personal use
-- The `SUPABASE_SERVICE_ROLE_KEY` is used server-side only — never exposed to the client
+- Single-tenant by design — each OAuth account has fully isolated data via RLS-aware queries.
+- The `SUPABASE_SERVICE_ROLE_KEY` is used server-side only — never exposed to the client.
+- Pillar icons are stored in the DB (`pillars.icon_key`) and persist across devices; localStorage acts as a cache only.
+- AI prompts adapt to custom pillars — there's a generic system-prompt builder that uses the pillar's label + description.

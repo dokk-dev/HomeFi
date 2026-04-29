@@ -39,6 +39,13 @@ export const CreateStepSchema = z.object({
   title: z.string().trim().min(1, "Title is required").max(200),
 });
 
+export const CreatePillarSchema = z.object({
+  label: z.string().trim().min(1, "Label is required").max(100),
+  color: z.string().regex(/^#[0-9a-fA-F]{6}$/, "Invalid color hex").default("#6366f1"),
+  description: z.string().max(500).optional(),
+  icon_key: z.string().max(50).optional(),
+});
+
 export const ChatBodySchema = z.object({
   pillarSlug: z.string().min(1).max(50),
   message: z.string().trim().min(1, "Message is required").max(8000),

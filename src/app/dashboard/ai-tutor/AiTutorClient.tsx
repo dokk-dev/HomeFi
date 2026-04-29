@@ -3,7 +3,7 @@
 import { useState, useEffect, useRef, useCallback, FormEvent, KeyboardEvent } from "react";
 import { useRouter } from "next/navigation";
 import { Bot, Send, Square, Sparkles } from "lucide-react";
-import { PILLAR_ICONS } from "@/lib/icons/pillarIcons";
+import { resolveIcon } from "@/lib/icons/pillarIcons";
 import { MessageContent, LoadingDots } from "./ChatHelpers";
 import { KnowledgeContextPanel } from "./KnowledgeContextPanel";
 import type { Message, Pillar, Quiz, TestState } from "./types";
@@ -215,7 +215,7 @@ export function AiTutorClient({ pillars, displayName }: Props) {
         <div className="flex gap-2 px-4 md:px-8 pt-4 md:pt-6 pb-4 flex-wrap border-b border-outline-variant/10">
           {pillars.map((pillar) => {
             const isActive = pillar.slug === activeSlug;
-            const Icon = PILLAR_ICONS[pillar.slug];
+            const Icon = resolveIcon(pillar.slug, pillar.icon_key);
             return (
               <button
                 key={pillar.slug}
@@ -227,15 +227,13 @@ export function AiTutorClient({ pillars, displayName }: Props) {
                     : undefined
                 }
               >
-                {Icon && (
-                  <Icon
-                    size={14}
-                    style={isActive ? { color: pillar.color } : undefined}
-                    className={!isActive ? "text-outline" : ""}
-                  />
-                )}
+                <Icon
+                  size={14}
+                  style={isActive ? { color: pillar.color } : undefined}
+                  className={!isActive ? "text-outline" : ""}
+                />
                 <span className={isActive ? "" : "text-on-surface-variant"}>
-                  {pillar.meta?.shortLabel ?? pillar.label}
+                  {pillar.label}
                 </span>
               </button>
             );
@@ -334,7 +332,7 @@ export function AiTutorClient({ pillars, displayName }: Props) {
           <div className="flex items-center gap-4 mt-3 justify-center">
             <span className="flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-widest text-outline">
               <span className="w-1.5 h-1.5 rounded-full" style={{ backgroundColor: activePillar?.color ?? "#6366f1" }} />
-              Focus: {activePillar?.meta?.shortLabel ?? activePillar?.label ?? "—"}
+              Focus: {activePillar?.label ?? "—"}
             </span>
             <span className="flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-widest text-outline">
               <span className="w-1.5 h-1.5 rounded-full bg-outline/40" />

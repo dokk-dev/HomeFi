@@ -4,11 +4,9 @@ import GoogleProvider from "next-auth/providers/google";
 import { getSupabaseAdminClient } from "@/lib/supabase/admin";
 
 const PILLAR_SEED = [
-  { slug: "cs-ai",      label: "CS / AI Coursework",     description: "Algorithms, ML, systems, and research.",         color: "#6366f1", icon_key: "cs",      position: 0 },
-  { slug: "music-tech", label: "Music Tech / Audio Dev",  description: "DAW scripting, audio DSP, Max/MSP, Ableton.",    color: "#ec4899", icon_key: "music",   position: 1 },
-  { slug: "russian",    label: "Russian Studies",          description: "Grammar, vocabulary, reading, listening.",        color: "#f59e0b", icon_key: "russian", position: 2 },
-  { slug: "hebrew",     label: "Hebrew Studies",           description: "Aleph-bet, vocabulary, scripture reading.",       color: "#10b981", icon_key: "hebrew",  position: 3 },
-  { slug: "career",     label: "Career / Applications",   description: "Job apps, resume, networking, portfolio.",        color: "#3b82f6", icon_key: "career",  position: 4 },
+  { slug: "learning",  label: "Learning",  description: "Study notes, courses, and knowledge building.", color: "#6366f1", icon_key: "BookOpen",  position: 0 },
+  { slug: "projects",  label: "Projects",  description: "Personal projects and side work.",              color: "#ec4899", icon_key: "Rocket",    position: 1 },
+  { slug: "career",    label: "Career",    description: "Job search, resume, and professional growth.",  color: "#3b82f6", icon_key: "Briefcase", position: 2 },
 ];
 
 export const authOptions: NextAuthOptions = {

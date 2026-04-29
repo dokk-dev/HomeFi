@@ -7,16 +7,16 @@ import Image from "next/image";
 import {
   User, Layout, Bell, Shield,
   Moon, Sun, SunMoon, BellOff, Music, Archive,
-  Check, Camera, Sparkles,
+  Check, Camera, Sparkles, Plus, Trash2,
 } from "lucide-react";
-import { ICON_REGISTRY, PILLAR_ICONS } from "@/lib/icons/pillarIcons";
+import { ICON_REGISTRY, resolveIcon } from "@/lib/icons/pillarIcons";
 
 type Tab = "profile" | "workspace" | "notifications" | "security";
 type Theme = "dark" | "light" | "auto";
 
 const PILLAR_COLORS = ["#6366f1", "#ec4899", "#f59e0b", "#10b981", "#3b82f6", "#8b5cf6", "#ef4444", "#14b8a6"];
 
-interface PillarRow { id: string; slug: string; label: string; color: string; }
+interface PillarRow { id: string; slug: string; label: string; color: string; icon_key: string | null; }
 interface Props { name: string; email: string; avatarUrl: string | null; pillars: PillarRow[]; }
 
 function Toggle({ checked, onChange }: { checked: boolean; onChange: () => void }) {
@@ -28,7 +28,7 @@ function Toggle({ checked, onChange }: { checked: boolean; onChange: () => void 
   );
 }
 
-export function SettingsClient({ name, email, avatarUrl, pillars }: Props) {
+export function SettingsClient({ name, email, avatarUrl, pillars: initialPillars }: Props) {
   const { update: updateSession } = useSession();
   const { toast } = useToast();
   const [activeTab, setActiveTab] = useState<Tab>("profile");
@@ -46,14 +46,22 @@ export function SettingsClient({ name, email, avatarUrl, pillars }: Props) {
   const [playMusic, setPlayMusic] = useState(false);
   const [autoArchive, setAutoArchive] = useState(true);
 
-  // Workspace
-  const initValues = () => Object.fromEntries(pillars.map((p) => [p.id, { label: p.label, color: p.color }]));
-  const [pillarDrafts, setPillarDrafts] = useState<Record<string, { label: string; color: string }>>(initValues);
-  const [pillarBases, setPillarBases] = useState<Record<string, { label: string; color: string }>>(initValues);
+  // Workspace — pillar list is mutable (create/delete)
+  const [pillars, setPillars] = useState<PillarRow[]>(initialPillars);
+  const initValues = (list: PillarRow[]) => Object.fromEntries(list.map((p) => [p.id, { label: p.label, color: p.color }]));
+  const [pillarDrafts, setPillarDrafts] = useState<Record<string, { label: string; color: string }>>(() => initValues(initialPillars));
+  const [pillarBases, setPillarBases] = useState<Record<string, { label: string; color: string }>>(() => initValues(initialPillars));
   const [pillarSaving, setPillarSaving] = useState<Record<string, boolean>>({});
   const [pillarSaved, setPillarSaved] = useState<Record<string, boolean>>({});
+  const [pillarDeleting, setPillarDeleting] = useState<Record<string, boolean>>({});
   const [iconOverrides, setIconOverrides] = useState<Record<string, string>>({});
   const [openPickerFor, setOpenPickerFor] = useState<string | null>(null);
+
+  // New pillar form
+  const [showNewForm, setShowNewForm] = useState(false);
+  const [newLabel, setNewLabel] = useState("");
+  const [newColor, setNewColor] = useState("#6366f1");
+  const [creatingPillar, setCreatingPillar] = useState(false);
 
   // Security
   const [deleteConfirm, setDeleteConfirm] = useState(false);
@@ -163,6 +171,61 @@ export function SettingsClient({ name, email, avatarUrl, pillars }: Props) {
       localStorage.setItem("meridian-icon-overrides", JSON.stringify(updated));
       window.dispatchEvent(new CustomEvent("icon-overrides-changed"));
     } catch {}
+
+    // Persist to DB so it survives localStorage clearing
+    const pillar = pillars.find((p) => p.slug === slug);
+    if (pillar) {
+      fetch(`/api/pillars/${pillar.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ icon_key: iconName }),
+      }).catch(() => {});
+    }
+  }
+
+  async function handleCreatePillar() {
+    if (!newLabel.trim()) return;
+    setCreatingPillar(true);
+    try {
+      const res = await fetch("/api/pillars", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ label: newLabel.trim(), color: newColor }),
+      });
+      if (res.ok) {
+        const pillar: PillarRow = await res.json();
+        setPillars((prev) => [...prev, pillar]);
+        setPillarDrafts((d) => ({ ...d, [pillar.id]: { label: pillar.label, color: pillar.color } }));
+        setPillarBases((b) => ({ ...b, [pillar.id]: { label: pillar.label, color: pillar.color } }));
+        setNewLabel("");
+        setNewColor("#6366f1");
+        setShowNewForm(false);
+        toast("Pillar created");
+        window.dispatchEvent(new CustomEvent("pillars-changed"));
+      } else {
+        const err = await res.json().catch(() => ({})) as { error?: string };
+        toast(err.error ?? "Failed to create pillar");
+      }
+    } finally {
+      setCreatingPillar(false);
+    }
+  }
+
+  async function handleDeletePillar(pillarId: string) {
+    setPillarDeleting((s) => ({ ...s, [pillarId]: true }));
+    try {
+      const res = await fetch(`/api/pillars/${pillarId}`, { method: "DELETE" });
+      if (res.ok || res.status === 204) {
+        const deleted = pillars.find((p) => p.id === pillarId);
+        setPillars((prev) => prev.filter((p) => p.id !== pillarId));
+        setPillarDrafts((d) => { const n = { ...d }; delete n[pillarId]; return n; });
+        setPillarBases((b) => { const n = { ...b }; delete n[pillarId]; return n; });
+        toast("Pillar deleted");
+        if (deleted) window.dispatchEvent(new CustomEvent("pillars-changed"));
+      }
+    } finally {
+      setPillarDeleting((s) => ({ ...s, [pillarId]: false }));
+    }
   }
 
   const TABS = [
@@ -288,10 +351,10 @@ export function SettingsClient({ name, email, avatarUrl, pillars }: Props) {
                   const isDirty = draft.label !== base.label || draft.color !== base.color;
                   const isSaving = pillarSaving[pillar.id];
                   const isSaved = pillarSaved[pillar.id];
+                  const isDeleting = pillarDeleting[pillar.id];
                   const overrideKey = iconOverrides[pillar.slug];
-                  const Icon = (overrideKey ? ICON_REGISTRY[overrideKey] : null) ?? PILLAR_ICONS[pillar.slug];
-                  const defaultIconKey = Object.entries(ICON_REGISTRY).find(([, v]) => v === PILLAR_ICONS[pillar.slug])?.[0];
-                  const currentIconKey = overrideKey ?? defaultIconKey;
+                  const Icon = resolveIcon(pillar.slug, pillar.icon_key, iconOverrides);
+                  const currentIconKey = overrideKey ?? pillar.icon_key ?? undefined;
                   const isPickerOpen = openPickerFor === pillar.slug;
 
                   return (
@@ -344,17 +407,73 @@ export function SettingsClient({ name, email, avatarUrl, pillars }: Props) {
                         {/* Save */}
                         <button
                           onClick={() => handleSavePillar(pillar.id)}
-                          disabled={!isDirty && !isSaved || isSaving}
+                          disabled={(!isDirty && !isSaved) || isSaving}
                           className={`flex items-center gap-1.5 px-4 py-2 rounded-xl text-xs font-bold transition-all flex-shrink-0 ${
                             isSaved ? "bg-emerald-500/20 text-emerald-400" : isDirty ? "bg-primary/10 text-primary hover:bg-primary/20" : "bg-surface-container text-outline cursor-not-allowed"
                           }`}
                         >
                           {isSaving ? "Saving…" : isSaved ? <><Check size={12} /> Saved</> : "Save"}
                         </button>
+
+                        {/* Delete */}
+                        <button
+                          onClick={() => handleDeletePillar(pillar.id)}
+                          disabled={isDeleting}
+                          className="w-8 h-8 flex items-center justify-center rounded-lg text-outline hover:text-red-400 hover:bg-red-500/10 transition-colors flex-shrink-0"
+                          title="Delete pillar"
+                        >
+                          <Trash2 size={14} />
+                        </button>
                       </div>
                     </div>
                   );
                 })}
+
+                {/* New pillar form */}
+                {showNewForm ? (
+                  <div className="bg-surface-container-low rounded-2xl border border-primary/20 p-4">
+                    <p className="text-[10px] font-bold uppercase tracking-widest text-outline mb-3">New Pillar</p>
+                    <div className="flex flex-wrap items-center gap-3">
+                      <input
+                        type="text"
+                        placeholder="Pillar name"
+                        value={newLabel}
+                        onChange={(e) => setNewLabel(e.target.value)}
+                        onKeyDown={(e) => e.key === "Enter" && handleCreatePillar()}
+                        autoFocus
+                        className="flex-1 bg-surface-container rounded-lg px-4 py-2 text-on-surface text-sm border border-outline-variant/20 focus:outline-none focus:ring-1 focus:ring-primary/40 transition-all font-semibold"
+                      />
+                      <div className="flex gap-1.5 flex-wrap max-w-[112px]">
+                        {PILLAR_COLORS.map((c) => (
+                          <button key={c} onClick={() => setNewColor(c)}
+                            className="w-5 h-5 rounded-full transition-transform hover:scale-110"
+                            style={{ backgroundColor: c, outline: newColor === c ? `2px solid ${c}` : "2px solid transparent", outlineOffset: "2px" }} />
+                        ))}
+                      </div>
+                      <button
+                        onClick={handleCreatePillar}
+                        disabled={!newLabel.trim() || creatingPillar}
+                        className="flex items-center gap-1.5 px-4 py-2 rounded-xl text-xs font-bold bg-primary/10 text-primary hover:bg-primary/20 disabled:opacity-40 disabled:cursor-not-allowed transition-all flex-shrink-0"
+                      >
+                        {creatingPillar ? "Creating…" : <><Check size={12} /> Create</>}
+                      </button>
+                      <button
+                        onClick={() => { setShowNewForm(false); setNewLabel(""); setNewColor("#6366f1"); }}
+                        className="w-8 h-8 flex items-center justify-center rounded-lg text-outline hover:text-on-surface hover:bg-surface-container transition-colors flex-shrink-0"
+                      >
+                        ×
+                      </button>
+                    </div>
+                  </div>
+                ) : (
+                  <button
+                    onClick={() => setShowNewForm(true)}
+                    className="w-full flex items-center justify-center gap-2 py-3 rounded-2xl border-2 border-dashed border-outline-variant/20 text-outline hover:text-on-surface hover:border-outline-variant/40 transition-colors text-sm font-semibold"
+                  >
+                    <Plus size={16} />
+                    Add pillar
+                  </button>
+                )}
               </div>
             </>
           )}

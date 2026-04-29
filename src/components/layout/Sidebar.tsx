@@ -6,9 +6,16 @@ import Image from "next/image";
 import { usePathname } from "next/navigation";
 import { useSession, signOut } from "next-auth/react";
 import { Settings, Bot, LogOut } from "lucide-react";
-import { PILLARS } from "@/lib/constants/pillars";
-import { PILLAR_ICONS, ICON_REGISTRY } from "@/lib/icons/pillarIcons";
+import { resolveIcon } from "@/lib/icons/pillarIcons";
 import { FocusTimer } from "@/components/focus/FocusTimer";
+
+interface PillarEntry {
+  id: string;
+  slug: string;
+  label: string;
+  color: string;
+  icon_key: string | null;
+}
 
 export function Sidebar() {
   const pathname = usePathname();
@@ -21,8 +28,7 @@ export function Sidebar() {
   const [displayAvatar, setDisplayAvatar] = useState<string | null>(null);
   const [avatarPopping, setAvatarPopping] = useState(false);
   const [iconOverrides, setIconOverrides] = useState<Record<string, string>>({});
-  // Pillar label/color overrides from DB (updated when user saves in Settings)
-  const [pillarOverrides, setPillarOverrides] = useState<Record<string, { label: string; color: string }>>({});
+  const [pillars, setPillars] = useState<PillarEntry[]>([]);
 
   const displayName = session?.user?.name?.toUpperCase() ?? "YOU";
 
@@ -37,14 +43,11 @@ export function Sidebar() {
       if (ov) setIconOverrides(JSON.parse(ov));
     } catch {}
 
-    // Fetch current pillar labels/colors from DB
+    // Fetch live pillars from DB
     fetch("/api/pillars")
       .then((r) => r.json())
-      .then((pillars: { slug: string; label: string; color: string }[]) => {
-        if (!Array.isArray(pillars)) return;
-        const overrides: Record<string, { label: string; color: string }> = {};
-        for (const p of pillars) overrides[p.slug] = { label: p.label, color: p.color };
-        setPillarOverrides(overrides);
+      .then((data: PillarEntry[]) => {
+        if (Array.isArray(data)) setPillars(data);
       })
       .catch(() => {});
 
@@ -66,7 +69,14 @@ export function Sidebar() {
 
     function handleLabelChange(e: Event) {
       const { slug, label, color } = (e as CustomEvent<{ slug: string; label: string; color: string }>).detail;
-      setPillarOverrides((prev) => ({ ...prev, [slug]: { label, color } }));
+      setPillars((prev) => prev.map((p) => p.slug === slug ? { ...p, label, color } : p));
+    }
+
+    function handlePillarListChange() {
+      fetch("/api/pillars")
+        .then((r) => r.json())
+        .then((data: PillarEntry[]) => { if (Array.isArray(data)) setPillars(data); })
+        .catch(() => {});
     }
 
     function handleSidebarOpen() { setMobileOpen(true); }
@@ -74,11 +84,13 @@ export function Sidebar() {
     window.addEventListener("avatar-changed", handleAvatarChange);
     window.addEventListener("icon-overrides-changed", handleIconChange);
     window.addEventListener("pillar-label-changed", handleLabelChange);
+    window.addEventListener("pillars-changed", handlePillarListChange);
     window.addEventListener("sidebar-open", handleSidebarOpen);
     return () => {
       window.removeEventListener("avatar-changed", handleAvatarChange);
       window.removeEventListener("icon-overrides-changed", handleIconChange);
       window.removeEventListener("pillar-label-changed", handleLabelChange);
+      window.removeEventListener("pillars-changed", handlePillarListChange);
       window.removeEventListener("sidebar-open", handleSidebarOpen);
     };
   }, []);
@@ -144,25 +156,22 @@ export function Sidebar() {
           Your Pillars
         </div>
 
-        {PILLARS.map((pillar) => {
+        {pillars.map((pillar) => {
           const isActive = pathname === `/dashboard/pillars/${pillar.slug}`;
-          const overrideKey = iconOverrides[pillar.slug];
-          const Icon = (overrideKey ? ICON_REGISTRY[overrideKey] : null) ?? PILLAR_ICONS[pillar.slug];
-          const color = pillarOverrides[pillar.slug]?.color ?? pillar.color;
-          const label = pillarOverrides[pillar.slug]?.label ?? pillar.shortLabel;
+          const Icon = resolveIcon(pillar.slug, pillar.icon_key, iconOverrides);
           return (
             <Link
-              key={pillar.slug}
+              key={pillar.id}
               href={`/dashboard/pillars/${pillar.slug}`}
               className={`flex items-center gap-3 px-4 py-2.5 transition-colors duration-150 border-l-2 ${
                 isActive
                   ? "font-headline font-bold"
                   : "border-transparent text-on-surface-variant hover:text-on-surface hover:bg-surface-container"
               }`}
-              style={isActive ? { color, backgroundColor: `${color}0d`, borderLeftColor: color } : undefined}
+              style={isActive ? { color: pillar.color, backgroundColor: `${pillar.color}0d`, borderLeftColor: pillar.color } : undefined}
             >
-              {Icon && <Icon size={18} style={isActive ? { color } : undefined} />}
-              <span className="text-sm font-headline font-semibold tracking-tight">{label}</span>
+              <Icon size={18} style={isActive ? { color: pillar.color } : undefined} />
+              <span className="text-sm font-headline font-semibold tracking-tight">{pillar.label}</span>
             </Link>
           );
         })}

@@ -1,6 +1,6 @@
 import Link from "next/link";
 import type { Pillar } from "@/lib/types";
-import { PILLAR_ICONS } from "@/lib/icons/pillarIcons";
+import { resolveIcon } from "@/lib/icons/pillarIcons";
 
 interface PillarCardProps {
   pillar: Pillar;
@@ -10,7 +10,7 @@ export function PillarCard({ pillar }: PillarCardProps) {
   const total = pillar.task_count ?? 0;
   const completed = pillar.completed_count ?? 0;
   const mastery = total > 0 ? Math.round((completed / total) * 100) : 0;
-  const Icon = PILLAR_ICONS[pillar.slug];
+  const Icon = resolveIcon(pillar.slug, pillar.icon_key);
 
   return (
     <Link

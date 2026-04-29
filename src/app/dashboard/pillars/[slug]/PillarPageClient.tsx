@@ -4,7 +4,7 @@ import { useState, useRef, useEffect } from "react";
 import { Zap } from "lucide-react";
 import { TaskList, type TaskListHandle } from "@/components/tasks/TaskList";
 import { StudyAssistant } from "@/components/chat/StudyAssistant";
-import { PILLAR_ICONS } from "@/lib/icons/pillarIcons";
+import { resolveIcon } from "@/lib/icons/pillarIcons";
 import type { Task } from "@/lib/types";
 
 interface Pillar {
@@ -13,6 +13,7 @@ interface Pillar {
   label: string;
   description: string | null;
   color: string;
+  icon_key: string | null;
 }
 
 interface Props {
@@ -26,7 +27,7 @@ interface Props {
 export function PillarPageClient({ pillar, tasks, mastery, completed, total }: Props) {
   const [tutorOpen, setTutorOpen] = useState(false);
   const [zapReady, setZapReady] = useState(false);
-  const PillarIcon = PILLAR_ICONS[pillar.slug];
+  const PillarIcon = resolveIcon(pillar.slug, pillar.icon_key);
   const taskListRef = useRef<TaskListHandle>(null);
 
   useEffect(() => {
@@ -128,38 +129,24 @@ export function PillarPageClient({ pillar, tasks, mastery, completed, total }: P
       </aside>
 
       {/* ── Floating action button ─────────────────────────────────────────── */}
-      {!tutorOpen && (
-        <button
-          onClick={() => setTutorOpen(true)}
-          className="fixed bottom-8 right-8 w-12 h-12 rounded-full shadow-lg flex items-center justify-center hover:scale-110 z-30"
-          style={{
-            backgroundColor: pillar.color,
-            opacity: zapReady ? 1 : 0,
-            transform: zapReady ? "scale(1)" : "scale(0)",
-            transition: "opacity 200ms ease, transform 320ms cubic-bezier(0.34,1.56,0.64,1)",
-          }}
-          title="Open AI Tutor"
-        >
-          <Zap size={20} color="white" />
-        </button>
-      )}
-
-      {tutorOpen && (
-        <button
-          onClick={() => taskListRef.current?.openAddTask()}
-          className="fixed bottom-8 z-30 w-12 h-12 rounded-full shadow-lg items-center justify-center hover:scale-110 hidden md:flex"
-          style={{
-            right: "416px",
-            backgroundColor: pillar.color,
-            opacity: zapReady ? 1 : 0,
-            transform: zapReady ? "scale(1)" : "scale(0)",
-            transition: "opacity 200ms ease, transform 320ms cubic-bezier(0.34,1.56,0.64,1)",
-          }}
-          title="Add task"
-        >
-          <Zap size={20} color="white" />
-        </button>
-      )}
+      <button
+        onClick={() => tutorOpen ? taskListRef.current?.openAddTask() : setTutorOpen(true)}
+        className="fixed bottom-8 w-12 h-12 rounded-full shadow-lg flex items-center justify-center hover:scale-110 z-30"
+        style={{
+          right: tutorOpen ? "416px" : "32px",
+          backgroundColor: pillar.color,
+          opacity: zapReady ? 1 : 0,
+          transform: zapReady ? "scale(1)" : "scale(0.5)",
+          transition: [
+            "right 320ms cubic-bezier(0.4,0,0.2,1)",
+            "opacity 200ms ease",
+            "transform 320ms cubic-bezier(0.34,1.56,0.64,1)",
+          ].join(", "),
+        }}
+        title={tutorOpen ? "Add task" : "Open AI Tutor"}
+      >
+        <Zap size={20} color="white" />
+      </button>
     </div>
   );
 }

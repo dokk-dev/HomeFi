@@ -11,6 +11,7 @@ export const PATCH = withSessionAndParams<Params>(async (req, { params }, userId
   if (typeof body.label === "string") updateData.label = body.label.trim();
   if (typeof body.color === "string") updateData.color = body.color;
   if (typeof body.description === "string") updateData.description = body.description;
+  if (typeof body.icon_key === "string") updateData.icon_key = body.icon_key;
   if (typeof body.mastery === "number") updateData.mastery = Math.max(0, Math.min(100, Math.round(body.mastery)));
 
   if (Object.keys(updateData).length === 0) {
@@ -29,4 +30,26 @@ export const PATCH = withSessionAndParams<Params>(async (req, { params }, userId
   if (!pillar) return Response.json({ error: "Pillar not found" }, { status: 404 });
 
   return Response.json(pillar);
+});
+
+export const DELETE = withSessionAndParams<Params>(async (_req, { params }, userId) => {
+  const supabase = getSupabaseAdminClient();
+
+  const { data: pillar } = await supabase
+    .from("pillars")
+    .select("id")
+    .eq("id", params.id)
+    .eq("user_id", userId)
+    .maybeSingle();
+
+  if (!pillar) return Response.json({ error: "Pillar not found" }, { status: 404 });
+
+  const { error } = await supabase
+    .from("pillars")
+    .delete()
+    .eq("id", params.id)
+    .eq("user_id", userId);
+
+  if (error) return Response.json({ error: error.message }, { status: 500 });
+  return new Response(null, { status: 204 });
 });

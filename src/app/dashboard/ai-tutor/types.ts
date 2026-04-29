@@ -1,5 +1,3 @@
-import type { PillarMeta } from "@/lib/constants/pillars";
-
 export interface Message {
   role: "user" | "assistant";
   content: string;
@@ -10,8 +8,8 @@ export interface Pillar {
   slug: string;
   label: string;
   color: string;
+  icon_key: string | null;
   mastery: number;
-  meta: PillarMeta | undefined;
 }
 
 export interface QuizQuestion {

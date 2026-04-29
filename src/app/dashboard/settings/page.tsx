@@ -11,7 +11,7 @@ export default async function SettingsPage() {
   const supabase = getSupabaseAdminClient();
   const { data: pillars } = await supabase
     .from("pillars")
-    .select("id, slug, label, color")
+    .select("id, slug, label, color, icon_key")
     .eq("user_id", session.user.id)
     .order("position");
 

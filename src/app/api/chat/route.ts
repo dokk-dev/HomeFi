@@ -6,7 +6,8 @@ import { getSupabaseAdminClient } from "@/lib/supabase/admin";
 import { checkRateLimit } from "@/lib/api/rateLimit";
 import { ChatBodySchema } from "@/lib/api/schemas";
 
-const SYSTEM_PROMPTS: Record<string, string> = {
+// Legacy high-quality prompts for built-in pillar slugs
+const LEGACY_PROMPTS: Record<string, string> = {
   "cs-ai": `You are an expert CS and AI tutor helping a student with their CS/AI coursework. Your areas of expertise include algorithms, data structures, machine learning, deep learning, computer systems, and AI research.
 
 Your teaching style:
@@ -69,6 +70,21 @@ Your expertise includes:
 Be specific and actionable. When reviewing materials, give concrete feedback. Help the student think strategically about their job search and position themselves effectively for the roles they want. Be encouraging but realistic about timelines and expectations.`,
 };
 
+function buildSystemPrompt(pillarLabel: string, pillarDescription: string | null): string {
+  return `You are an expert tutor and coach helping a student with their "${pillarLabel}" focus area.${
+    pillarDescription ? `\n\nAbout this area: ${pillarDescription}` : ""
+  }
+
+Your teaching style:
+- Break complex concepts into clear, digestible pieces
+- Ask Socratic questions to guide understanding rather than just giving answers
+- Give concrete, actionable advice with specific examples
+- Suggest relevant practice tasks, resources, and next steps
+- Reference the student's current tasks when relevant to provide personalized guidance
+
+Help the student with questions, explanations, planning, problem-solving, skill development, and any other aspects of their work in this area.`;
+}
+
 export async function POST(req: NextRequest) {
   const session = await getServerSession(authOptions);
   if (!session?.user?.id) {
@@ -95,41 +111,41 @@ export async function POST(req: NextRequest) {
 
   const { pillarSlug, message, history, provider, model } = parsed.data;
 
-  const baseSystemPrompt = SYSTEM_PROMPTS[pillarSlug];
-  if (!baseSystemPrompt) {
-    return new Response(JSON.stringify({ error: "Invalid pillar" }), {
+  // Fetch pillar and active tasks for context
+  const supabase = getSupabaseAdminClient();
+  const { data: pillar } = await supabase
+    .from("pillars")
+    .select("id, label, description")
+    .eq("user_id", session.user.id)
+    .eq("slug", pillarSlug)
+    .single();
+
+  if (!pillar) {
+    return new Response(JSON.stringify({ error: "Pillar not found" }), {
       status: 400,
       headers: { "Content-Type": "application/json" },
     });
   }
 
-  // Fetch active tasks for context
-  const supabase = getSupabaseAdminClient();
-  const { data: pillar } = await supabase
-    .from("pillars")
-    .select("id, label")
-    .eq("user_id", session.user.id)
-    .eq("slug", pillarSlug)
-    .single();
+  const baseSystemPrompt =
+    LEGACY_PROMPTS[pillarSlug] ?? buildSystemPrompt(pillar.label, pillar.description);
 
   let taskContext = "";
-  if (pillar) {
-    const { data: tasks } = await supabase
-      .from("tasks")
-      .select("title, notes")
-      .eq("pillar_id", pillar.id)
-      .eq("user_id", session.user.id)
-      .eq("is_complete", false)
-      .order("position")
-      .limit(10);
+  const { data: tasks } = await supabase
+    .from("tasks")
+    .select("title, notes")
+    .eq("pillar_id", pillar.id)
+    .eq("user_id", session.user.id)
+    .eq("is_complete", false)
+    .order("position")
+    .limit(10);
 
-    if (tasks && tasks.length > 0) {
-      taskContext = `\n\nThe student's current active tasks in ${pillar.label}:\n${
-        tasks
-          .map((t) => `- ${t.title}${t.notes ? ` (Notes: ${t.notes})` : ""}`)
-          .join("\n")
-      }\n\nReference these tasks when relevant to provide personalized, context-aware guidance.`;
-    }
+  if (tasks && tasks.length > 0) {
+    taskContext = `\n\nThe student's current active tasks in ${pillar.label}:\n${
+      tasks
+        .map((t) => `- ${t.title}${t.notes ? ` (Notes: ${t.notes})` : ""}`)
+        .join("\n")
+    }\n\nReference these tasks when relevant to provide personalized, context-aware guidance.`;
   }
 
   const systemPrompt = baseSystemPrompt + taskContext;

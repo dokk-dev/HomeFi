@@ -215,7 +215,7 @@ export function StudyAssistant({
     }
   }
 
-  const quickChips = STARTER_PROMPTS[pillarSlug] ?? [];
+  const quickChips = STARTER_PROMPTS[pillarSlug] ?? STARTER_PROMPTS.__default;
   const isEmpty = messages.length === 0 && !isLoading;
 
   // ── Panel mode (right-side panel on pillar page) ────────────────────────
@@ -551,6 +551,12 @@ export function StudyAssistant({
 }
 
 const STARTER_PROMPTS: Record<string, string[]> = {
+  __default: [
+    "Help me understand my current tasks",
+    "What should I focus on next?",
+    "Quiz me on something",
+    "Explain a key concept",
+  ],
   "cs-ai": [
     "Help me understand my current tasks",
     "Quiz me on a topic",

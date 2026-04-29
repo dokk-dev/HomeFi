@@ -6,7 +6,7 @@ import { getSupabaseAdminClient } from "@/lib/supabase/admin";
 import { PillarGrid } from "@/components/pillars/PillarGrid";
 import { FocusSection } from "@/components/tasks/FocusSection";
 import { ListTodo, ArrowRight, Circle } from "lucide-react";
-import { PILLAR_ICONS } from "@/lib/icons/pillarIcons";
+import { resolveIcon } from "@/lib/icons/pillarIcons";
 import type { Pillar } from "@/lib/types";
 
 export default async function DashboardPage() {
@@ -93,6 +93,8 @@ export default async function DashboardPage() {
     dailyCounts[idx]++;
   }
   const todayIndex = dow === 0 ? 6 : dow - 1;
+  const weeklyDone = dailyCounts.reduce((a, b) => a + b, 0);
+  const activeTasks = totalTasks - completedTasks;
 
   return (
     <div className="p-4 md:p-10 flex-1 space-y-12 max-w-6xl w-full">
@@ -154,7 +156,7 @@ export default async function DashboardPage() {
               </p>
             )}
             {queueTasks.map((task) => {
-              const QueueIcon = task.pillars?.slug ? PILLAR_ICONS[task.pillars.slug] : null;
+              const QueueIcon = task.pillars?.slug ? resolveIcon(task.pillars.slug, task.pillars.icon_key) : null;
               const pillarColor = task.pillars?.color ?? "#6366f1";
               return (
                 <a
@@ -191,14 +193,24 @@ export default async function DashboardPage() {
           </div>
           <div className="bg-surface-container-highest rounded-xl p-6">
             <WeeklyChart dailyCounts={dailyCounts} todayIndex={todayIndex} />
-            <div className="mt-6 pt-6 border-t border-outline-variant/20">
-              <div className="flex justify-between items-center">
-                <div className="text-[10px] font-label font-bold text-outline uppercase tracking-wider">
-                  Progress
+            <div className="mt-6 pt-6 border-t border-outline-variant/20 flex justify-between items-end">
+              <div>
+                <div className="text-[10px] font-label font-bold text-outline uppercase tracking-wider mb-1">
+                  This Week
                 </div>
-                <div className="text-lg font-headline font-bold text-on-surface">
-                  {completedTasks}/{totalTasks}
+                <div className="text-2xl font-headline font-bold text-on-surface leading-none">
+                  {weeklyDone}
                 </div>
+                <div className="text-[10px] text-outline mt-1">completed</div>
+              </div>
+              <div className="text-right">
+                <div className="text-[10px] font-label font-bold text-outline uppercase tracking-wider mb-1">
+                  Active
+                </div>
+                <div className="text-2xl font-headline font-bold text-on-surface leading-none">
+                  {activeTasks}
+                </div>
+                <div className="text-[10px] text-outline mt-1">remaining</div>
               </div>
             </div>
           </div>

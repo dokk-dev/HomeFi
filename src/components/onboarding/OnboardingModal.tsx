@@ -9,7 +9,7 @@ const steps = [
   {
     icon: Brain,
     title: "Your Study Pillars",
-    body: "Your learning is organized into five focus areas called pillars — CS/AI, Music Tech, Russian, Hebrew, and Career. Each pillar has its own task list and mastery progress.",
+    body: "Your learning is organized into focus areas called pillars — Learning, Projects, and Career to start. Add, rename, or delete pillars anytime from Settings. Each pillar has its own task list and mastery progress.",
   },
   {
     icon: BookOpen,
