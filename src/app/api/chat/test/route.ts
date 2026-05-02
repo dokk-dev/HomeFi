@@ -1,8 +1,8 @@
 import { NextRequest } from "next/server";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth/authOptions";
-import { GoogleGenerativeAI } from "@google/generative-ai";
 import { getSupabaseAdminClient } from "@/lib/supabase/admin";
+import { generateCompletion, parseJSONLoose } from "@/lib/ai/generate";
 
 export async function POST(req: NextRequest) {
   const session = await getServerSession(authOptions);
@@ -10,11 +10,8 @@ export async function POST(req: NextRequest) {
     return Response.json({ error: "Unauthorized" }, { status: 401 });
   }
 
-  const { pillarSlug } = await req.json() as { pillarSlug: string };
+  const { pillarSlug } = (await req.json()) as { pillarSlug: string };
   if (!pillarSlug) return Response.json({ error: "Missing pillarSlug" }, { status: 400 });
-
-  const apiKey = process.env.GEMINI_API_KEY;
-  if (!apiKey) return Response.json({ error: "AI not configured" }, { status: 500 });
 
   // Fetch pillar label + user's active tasks for context
   const supabase = getSupabaseAdminClient();
@@ -40,9 +37,9 @@ export async function POST(req: NextRequest) {
     ? `\n\nThe student's current tasks in this subject: ${tasks.map((t) => t.title).join(", ")}. Tailor at least 1–2 questions to these topics.`
     : "";
 
-  const prompt = `You are generating a knowledge test for a student studying "${pillar.label}".${taskContext}
+  const systemPrompt = `You generate knowledge tests for serious learners.${taskContext}
 
-Create a 5-question multiple choice quiz. Return ONLY valid JSON — no markdown, no code fences, no explanation.
+Return ONLY valid JSON — no markdown, no code fences, no explanation.
 
 Required format:
 {"title":"Short quiz title","questions":[{"q":"Question text","options":["Option A","Option B","Option C","Option D"],"correct":0}]}
@@ -54,20 +51,16 @@ Rules:
 - Make wrong answers plausible, not obviously wrong
 - No trick questions`;
 
+  const userPrompt = `Generate a 5-question multiple choice quiz for a student studying "${pillar.label}".`;
+
   try {
-    const genAI = new GoogleGenerativeAI(apiKey);
-    const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
-    const result = await model.generateContent(prompt);
-    const raw = result.response.text().trim();
+    const { text } = await generateCompletion({
+      systemPrompt,
+      userPrompt,
+      responseFormat: "json",
+    });
 
-    // Strip accidental markdown fences
-    const clean = raw
-      .replace(/^```json\s*/i, "")
-      .replace(/^```\s*/i, "")
-      .replace(/\s*```$/i, "")
-      .trim();
-
-    const quiz = JSON.parse(clean) as { title: string; questions: { q: string; options: string[]; correct: number }[] };
+    const quiz = parseJSONLoose<{ title: string; questions: { q: string; options: string[]; correct: number }[] }>(text);
 
     if (!quiz.title || !Array.isArray(quiz.questions) || quiz.questions.length === 0) {
       throw new Error("Invalid quiz structure returned by AI");
@@ -76,6 +69,14 @@ Rules:
     return Response.json(quiz);
   } catch (err) {
     const detail = err instanceof Error ? err.message : String(err);
-    return Response.json({ error: `Quiz generation failed: ${detail}` }, { status: 500 });
+    const isOllamaDown = detail.includes("ECONNREFUSED") || detail.includes("fetch failed");
+    return Response.json(
+      {
+        error: isOllamaDown
+          ? "Ollama isn't running. Start it with `ollama serve` and try again."
+          : `Quiz generation failed: ${detail}`,
+      },
+      { status: 500 },
+    );
   }
 }

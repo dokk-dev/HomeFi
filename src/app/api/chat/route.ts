@@ -1,7 +1,6 @@
 import { NextRequest } from "next/server";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth/authOptions";
-import { GoogleGenerativeAI } from "@google/generative-ai";
 import { getSupabaseAdminClient } from "@/lib/supabase/admin";
 import { checkRateLimit } from "@/lib/api/rateLimit";
 import { ChatBodySchema } from "@/lib/api/schemas";
@@ -109,7 +108,7 @@ export async function POST(req: NextRequest) {
     );
   }
 
-  const { pillarSlug, message, history, provider, model } = parsed.data;
+  const { pillarSlug, message, history, model } = parsed.data;
 
   // Fetch pillar and active tasks for context
   const supabase = getSupabaseAdminClient();
@@ -162,121 +161,54 @@ export async function POST(req: NextRequest) {
   let fullResponse = "";
 
   // ── Ollama (local) ────────────────────────────────────────────────────────
-  if (provider === "ollama") {
-    const ollamaModel = model ?? "llama3";
-    const ollamaMessages = [
-      { role: "system", content: systemPrompt },
-      ...(history ?? []).slice(-20).map((m) => ({ role: m.role, content: m.content })),
-      { role: "user", content: message.trim() },
-    ];
-
-    const stream = new ReadableStream({
-      async start(controller) {
-        try {
-          const ollamaBase = process.env.OLLAMA_BASE_URL ?? "http://localhost:11434";
-          const ollamaRes = await fetch(`${ollamaBase}/api/chat`, {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ model: ollamaModel, messages: ollamaMessages, stream: true }),
-          });
-
-          if (!ollamaRes.ok || !ollamaRes.body) {
-            const errText = await ollamaRes.text().catch(() => "Ollama returned an error");
-            controller.enqueue(encoder.encode(
-              `Ollama error (${ollamaRes.status}): ${errText}. Make sure Ollama is running (\`ollama serve\`) and the model "${ollamaModel}" is installed.`
-            ));
-            controller.close();
-            return;
-          }
-
-          const reader = ollamaRes.body.getReader();
-          const decoder = new TextDecoder();
-          let buffer = "";
-
-          while (true) {
-            const { done, value } = await reader.read();
-            if (done) break;
-            buffer += decoder.decode(value, { stream: true });
-            const lines = buffer.split("\n");
-            buffer = lines.pop() ?? "";
-            for (const line of lines) {
-              if (!line.trim()) continue;
-              try {
-                const json = JSON.parse(line) as { message?: { content?: string }; done?: boolean };
-                const text = json.message?.content ?? "";
-                if (text) {
-                  fullResponse += text;
-                  controller.enqueue(encoder.encode(text));
-                }
-              } catch {
-                // skip malformed lines
-              }
-            }
-          }
-
-          if (fullResponse) {
-            await supabase.from("chat_messages").insert({
-              user_id: session.user.id,
-              pillar_slug: pillarSlug,
-              role: "assistant",
-              content: fullResponse,
-            });
-          }
-
-          controller.close();
-        } catch (err) {
-          const detail = err instanceof Error ? err.message : String(err);
-          const isConnRefused = detail.includes("ECONNREFUSED") || detail.includes("fetch failed");
-          const hint = isConnRefused
-            ? `Ollama isn't running. Start it with \`ollama serve\` in your terminal, then try again.`
-            : `Sorry, I ran into an error: *${detail}*. Please try again.`;
-          controller.enqueue(encoder.encode(hint));
-          controller.close();
-        }
-      },
-    });
-
-    return new Response(stream, {
-      headers: {
-        "Content-Type": "text/plain; charset=utf-8",
-        "Cache-Control": "no-cache",
-        "X-Accel-Buffering": "no",
-      },
-    });
-  }
-
-  // ── Gemini (cloud fallback) ───────────────────────────────────────────────
-  const apiKey = process.env.GEMINI_API_KEY;
-  if (!apiKey) {
-    return new Response(JSON.stringify({ error: "GEMINI_API_KEY is not configured on the server" }), {
-      status: 500,
-      headers: { "Content-Type": "application/json" },
-    });
-  }
-
-  // Gemini uses "model" role instead of "assistant"
-  const geminiHistory = (history ?? []).slice(-20).map((m) => ({
-    role: m.role === "assistant" ? "model" : "user",
-    parts: [{ text: m.content }],
-  }));
+  const ollamaModel = model ?? process.env.OLLAMA_MODEL ?? "llama3";
+  const ollamaMessages = [
+    { role: "system", content: systemPrompt },
+    ...(history ?? []).slice(-20).map((m) => ({ role: m.role, content: m.content })),
+    { role: "user", content: message.trim() },
+  ];
 
   const stream = new ReadableStream({
     async start(controller) {
       try {
-        const genAI = new GoogleGenerativeAI(apiKey);
-        const geminiModel = genAI.getGenerativeModel({
-          model: "gemini-1.5-flash",
-          systemInstruction: systemPrompt,
+        const ollamaBase = process.env.OLLAMA_BASE_URL ?? "http://localhost:11434";
+        const ollamaRes = await fetch(`${ollamaBase}/api/chat`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ model: ollamaModel, messages: ollamaMessages, stream: true }),
         });
 
-        const chat = geminiModel.startChat({ history: geminiHistory });
-        const result = await chat.sendMessageStream(message.trim());
+        if (!ollamaRes.ok || !ollamaRes.body) {
+          const errText = await ollamaRes.text().catch(() => "Ollama returned an error");
+          controller.enqueue(encoder.encode(
+            `Ollama error (${ollamaRes.status}): ${errText}. Make sure Ollama is running (\`ollama serve\`) and the model "${ollamaModel}" is installed.`
+          ));
+          controller.close();
+          return;
+        }
 
-        for await (const chunk of result.stream) {
-          const text = chunk.text();
-          if (text) {
-            fullResponse += text;
-            controller.enqueue(encoder.encode(text));
+        const reader = ollamaRes.body.getReader();
+        const decoder = new TextDecoder();
+        let buffer = "";
+
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+          buffer += decoder.decode(value, { stream: true });
+          const lines = buffer.split("\n");
+          buffer = lines.pop() ?? "";
+          for (const line of lines) {
+            if (!line.trim()) continue;
+            try {
+              const json = JSON.parse(line) as { message?: { content?: string }; done?: boolean };
+              const text = json.message?.content ?? "";
+              if (text) {
+                fullResponse += text;
+                controller.enqueue(encoder.encode(text));
+              }
+            } catch {
+              // skip malformed lines
+            }
           }
         }
 
@@ -292,8 +224,11 @@ export async function POST(req: NextRequest) {
         controller.close();
       } catch (err) {
         const detail = err instanceof Error ? err.message : String(err);
-        console.error("[CHAT] Gemini stream error:", detail);
-        controller.enqueue(encoder.encode(`Sorry, I ran into an error reaching the AI service: *${detail}*. Please try again.`));
+        const isConnRefused = detail.includes("ECONNREFUSED") || detail.includes("fetch failed");
+        const hint = isConnRefused
+          ? `Ollama isn't running. Start it with \`ollama serve\` in your terminal, then try again.`
+          : `Sorry, I ran into an error: *${detail}*. Please try again.`;
+        controller.enqueue(encoder.encode(hint));
         controller.close();
       }
     },

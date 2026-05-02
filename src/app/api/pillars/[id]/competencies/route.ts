@@ -97,7 +97,7 @@ Generate the competency rubric for this pillar.`;
     return Response.json(
       {
         error: isOllamaDown
-          ? "Ollama isn't running. Start it with `ollama serve` or set GEMINI_API_KEY."
+          ? "Ollama isn't running. Start it with `ollama serve` and try again."
           : `AI generation failed: ${detail}`,
       },
       { status: 500 },

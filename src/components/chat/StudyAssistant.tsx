@@ -3,11 +3,8 @@
 import { useState, useEffect, useRef, useCallback, FormEvent, KeyboardEvent } from "react";
 import { Bot, Send, Square, X, Sparkles, ChevronDown } from "lucide-react";
 
-type Provider = "ollama" | "gemini";
-
 const OLLAMA_MODELS = ["llama3", "llava", "mistral", "codellama", "phi3", "gemma2"];
 
-const PROVIDER_STORAGE_KEY = "meridian-ai-provider";
 const MODEL_STORAGE_KEY = "meridian-ollama-model";
 
 interface Message {
@@ -87,26 +84,18 @@ export function StudyAssistant({
   const [input, setInput] = useState("");
   const [isLoading, setIsLoading] = useState(false);
   const [isStreaming, setIsStreaming] = useState(false);
-  const [provider, setProvider] = useState<Provider>("gemini");
   const [ollamaModel, setOllamaModel] = useState("llama3");
   const [modelMenuOpen, setModelMenuOpen] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
-  // Load provider preference from localStorage
+  // Load model preference from localStorage
   useEffect(() => {
     try {
-      const savedProvider = localStorage.getItem(PROVIDER_STORAGE_KEY) as Provider | null;
-      if (savedProvider === "ollama" || savedProvider === "gemini") setProvider(savedProvider);
       const savedModel = localStorage.getItem(MODEL_STORAGE_KEY);
       if (savedModel) setOllamaModel(savedModel);
     } catch {}
   }, []);
-
-  function switchProvider(p: Provider) {
-    setProvider(p);
-    try { localStorage.setItem(PROVIDER_STORAGE_KEY, p); } catch {}
-  }
 
   function switchModel(m: string) {
     setOllamaModel(m);
@@ -166,8 +155,8 @@ export function StudyAssistant({
           pillarSlug,
           message: trimmed,
           history,
-          provider,
-          model: provider === "ollama" ? ollamaModel : undefined,
+          provider: "ollama",
+          model: ollamaModel,
         }),
       });
 
@@ -206,7 +195,7 @@ export function StudyAssistant({
       setIsStreaming(false);
       textareaRef.current?.focus();
     }
-  }, [input, isStreaming, messages, pillarSlug, provider, ollamaModel]);
+  }, [input, isStreaming, messages, pillarSlug, ollamaModel]);
 
   function handleKeyDown(e: KeyboardEvent<HTMLTextAreaElement>) {
     if (e.key === "Enter" && !e.shiftKey) {
@@ -255,60 +244,33 @@ export function StudyAssistant({
             )}
           </div>
 
-          {/* Provider toggle */}
+          {/* Model picker */}
           <div className="flex items-center gap-2">
-            <div className="flex bg-surface-container rounded-lg p-0.5 gap-0.5">
+            <span className="text-[11px] text-outline">🦙</span>
+            <div className="relative">
               <button
-                onClick={() => switchProvider("ollama")}
-                className={`flex items-center gap-1.5 px-3 py-1 rounded-md text-[11px] font-medium transition-all ${
-                  provider === "ollama"
-                    ? "bg-surface-container-high text-on-surface shadow-sm"
-                    : "text-outline hover:text-on-surface-variant"
-                }`}
+                onClick={() => setModelMenuOpen((o) => !o)}
+                className="flex items-center gap-1 px-2.5 py-1 rounded-lg bg-surface-container text-[11px] text-on-surface-variant border border-outline-variant/20 hover:border-outline-variant/40 transition-colors"
               >
-                <span>🦙</span>
-                <span>Local</span>
+                <span className="font-mono">{ollamaModel}</span>
+                <ChevronDown size={10} />
               </button>
-              <button
-                onClick={() => switchProvider("gemini")}
-                className={`flex items-center gap-1.5 px-3 py-1 rounded-md text-[11px] font-medium transition-all ${
-                  provider === "gemini"
-                    ? "bg-surface-container-high text-on-surface shadow-sm"
-                    : "text-outline hover:text-on-surface-variant"
-                }`}
-              >
-                <span>✦</span>
-                <span>Gemini</span>
-              </button>
+              {modelMenuOpen && (
+                <div className="absolute top-full left-0 mt-1 z-50 bg-surface-container-high border border-outline-variant/20 rounded-lg shadow-lg overflow-hidden min-w-[110px]">
+                  {OLLAMA_MODELS.map((m) => (
+                    <button
+                      key={m}
+                      onClick={() => switchModel(m)}
+                      className={`w-full text-left px-3 py-2 text-[11px] font-mono hover:bg-surface-container transition-colors ${
+                        m === ollamaModel ? "text-on-surface font-semibold" : "text-on-surface-variant"
+                      }`}
+                    >
+                      {m}
+                    </button>
+                  ))}
+                </div>
+              )}
             </div>
-
-            {/* Ollama model picker */}
-            {provider === "ollama" && (
-              <div className="relative">
-                <button
-                  onClick={() => setModelMenuOpen((o) => !o)}
-                  className="flex items-center gap-1 px-2.5 py-1 rounded-lg bg-surface-container text-[11px] text-on-surface-variant border border-outline-variant/20 hover:border-outline-variant/40 transition-colors"
-                >
-                  <span className="font-mono">{ollamaModel}</span>
-                  <ChevronDown size={10} />
-                </button>
-                {modelMenuOpen && (
-                  <div className="absolute top-full left-0 mt-1 z-50 bg-surface-container-high border border-outline-variant/20 rounded-lg shadow-lg overflow-hidden min-w-[110px]">
-                    {OLLAMA_MODELS.map((m) => (
-                      <button
-                        key={m}
-                        onClick={() => switchModel(m)}
-                        className={`w-full text-left px-3 py-2 text-[11px] font-mono hover:bg-surface-container transition-colors ${
-                          m === ollamaModel ? "text-on-surface font-semibold" : "text-on-surface-variant"
-                        }`}
-                      >
-                        {m}
-                      </button>
-                    ))}
-                  </div>
-                )}
-              </div>
-            )}
           </div>
         </div>
 
@@ -541,7 +503,7 @@ export function StudyAssistant({
               </button>
             </form>
             <p className="text-xs text-outline mt-1.5 px-1">
-              {provider === "ollama" ? `🦙 ${ollamaModel} (local)` : "✦ Gemini"} · Responses may not always be accurate
+              🦙 {ollamaModel} (local) · Responses may not always be accurate
             </p>
           </div>
         </div>

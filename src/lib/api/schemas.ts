@@ -65,6 +65,6 @@ export const ChatBodySchema = z.object({
     )
     .max(50)
     .default([]),
-  provider: z.enum(["ollama", "gemini"]).default("ollama"),
+  provider: z.enum(["ollama"]).default("ollama"),
   model: z.string().max(100).optional(),
 });

@@ -7,7 +7,7 @@ A personal learning OS. Organize your study into customizable pillars, track tas
 - **Configurable pillars** — Create, rename, recolor, and pick icons for any number of focus areas (study, projects, career, hobbies — whatever fits your life)
 - **Tasks + steps** — Break work down, mark progress, schedule with due dates and recurrence
 - **Focus session** — Surfaces the most relevant task to work on next
-- **AI Tutor** — Per-pillar chat that knows your tasks; powered by Gemini (cloud) or Ollama (local, offline)
+- **AI Tutor** — Per-pillar chat that knows your tasks; powered by local Ollama (fully offline)
 - **Weekly momentum** — Visualizes completions across the current week
 - **Onboarding wizard** — First-run UI walkthrough plus a CLI setup script for env vars
 
@@ -16,7 +16,7 @@ A personal learning OS. Organize your study into customizable pillars, track tas
 - **Next.js 14** (App Router) + **React 18** + **TypeScript**
 - **Supabase** (Postgres + RLS-bypass admin client server-side)
 - **NextAuth** (GitHub + Google OAuth, JWT sessions)
-- **Gemini AI** + optional **Ollama** local models
+- **Ollama** (local, offline AI)
 - **Tailwind CSS**
 - **Zod** runtime validation at API boundaries
 - In-memory **rate limiting** (30 req/min per user)
@@ -29,7 +29,7 @@ A personal learning OS. Organize your study into customizable pillars, track tas
 
 1. Download or clone this repo.
 2. **macOS:** double-click `setup.command`. **Windows:** double-click `setup.bat`.
-3. Follow the prompts (it asks for Supabase keys, OAuth keys, Ollama URL, optional Gemini).
+3. Follow the prompts (it asks for Supabase keys, OAuth keys, and your Ollama URL).
 4. **macOS:** double-click `start.command`. **Windows:** double-click `start.bat`.
 
 The app opens at `http://localhost:3000`. The start script will auto-install dependencies and re-run setup if `.env.local` is missing.
@@ -181,10 +181,15 @@ In **Project Settings → API**, copy:
 2. Authorized redirect URI: `http://localhost:3000/api/auth/callback/google`
 3. Copy Client ID + Secret
 
-### 4. AI provider (pick one or both)
+### 4. AI provider — Ollama (required)
 
-- **Gemini** (cloud, free tier) — [aistudio.google.com/app/apikey](https://aistudio.google.com/app/apikey)
-- **Ollama** (local, fully offline) — install from [ollama.com](https://ollama.com), then `ollama serve && ollama pull llama3`
+The AI tutor and rubric/quiz generation run on **local Ollama** — no cloud calls, no API keys.
+
+1. Install Ollama from [ollama.com](https://ollama.com)
+2. Pull a model: `ollama pull llama3`
+3. Start the daemon: `ollama serve`
+
+Cloud providers (Claude first, Gemini later) will be added in a future release.
 
 ### 5. Environment
 
@@ -225,7 +230,7 @@ src/
 │       ├── settings/           Profile + pillar management
 │       └── stats/              Long-term progress
 ├── components/
-│   ├── chat/                   StudyAssistant + Gemini/Ollama clients
+│   ├── chat/                   StudyAssistant + Ollama streaming client
 │   ├── layout/                 Sidebar, TopBar
 │   ├── onboarding/             First-run modal
 │   ├── pillars/                Pillar grid + cards

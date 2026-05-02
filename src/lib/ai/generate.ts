@@ -1,18 +1,13 @@
-// Non-streaming JSON/text completion helper. Picks Gemini if a key is configured,
-// otherwise falls back to local Ollama. Used for one-shot AI tasks (competency
-// generation, quiz building, scenario grading) — distinct from the streaming
-// chat route.
+// Non-streaming JSON/text completion helper. Routes to local Ollama.
+// Used for one-shot AI tasks (competency generation, quiz building,
+// scenario grading) — distinct from the streaming chat route.
 
-import { GoogleGenerativeAI } from "@google/generative-ai";
-
-export type AIProvider = "gemini" | "ollama";
+export type AIProvider = "ollama";
 
 export interface GenerateOptions {
   systemPrompt: string;
   userPrompt: string;
   responseFormat?: "json" | "text";
-  // Force a specific provider; otherwise picks based on config
-  provider?: AIProvider;
 }
 
 export interface GenerateResult {
@@ -21,32 +16,7 @@ export interface GenerateResult {
 }
 
 export async function generateCompletion(opts: GenerateOptions): Promise<GenerateResult> {
-  const provider = opts.provider ?? (process.env.GEMINI_API_KEY ? "gemini" : "ollama");
-
-  if (provider === "gemini") {
-    const apiKey = process.env.GEMINI_API_KEY;
-    if (!apiKey) {
-      throw new Error("GEMINI_API_KEY is not configured");
-    }
-    return { text: await generateWithGemini(apiKey, opts), provider };
-  }
-
-  return { text: await generateWithOllama(opts), provider };
-}
-
-async function generateWithGemini(apiKey: string, opts: GenerateOptions): Promise<string> {
-  const genAI = new GoogleGenerativeAI(apiKey);
-  const model = genAI.getGenerativeModel({
-    model: "gemini-1.5-flash",
-    systemInstruction: opts.systemPrompt,
-    generationConfig:
-      opts.responseFormat === "json"
-        ? { responseMimeType: "application/json" }
-        : undefined,
-  });
-
-  const result = await model.generateContent(opts.userPrompt);
-  return result.response.text();
+  return { text: await generateWithOllama(opts), provider: "ollama" };
 }
 
 async function generateWithOllama(opts: GenerateOptions): Promise<string> {
@@ -76,7 +46,7 @@ async function generateWithOllama(opts: GenerateOptions): Promise<string> {
   return data.message?.content ?? "";
 }
 
-// Models occasionally wrap JSON in markdown fences despite responseMimeType.
+// Models occasionally wrap JSON in markdown fences despite format=json.
 // Strip them defensively before parsing.
 export function parseJSONLoose<T = unknown>(raw: string): T {
   try {
