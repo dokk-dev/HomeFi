@@ -1,11 +1,25 @@
 import { z } from "zod";
 
+// Date must be YYYY-MM-DD and on or after "today". 1-day grace handles
+// client/server timezone mismatch so users near midnight aren't rejected.
+const dateInPresentOrFuture = z
+  .string()
+  .regex(/^\d{4}-\d{2}-\d{2}$/, "Date must be YYYY-MM-DD")
+  .refine(
+    (s) => {
+      const grace = new Date();
+      grace.setUTCDate(grace.getUTCDate() - 1);
+      return s >= grace.toISOString().slice(0, 10);
+    },
+    { message: "Date cannot be in the past" },
+  );
+
 const RecurrenceRuleSchema = z.object({
   days: z
     .array(z.enum(["MON", "TUE", "WED", "THU", "FRI", "SAT", "SUN"]))
     .min(1),
   recurrenceType: z.enum(["perpetual", "temporary", "raincheck"]),
-  endsAt: z.string().nullable(),
+  endsAt: dateInPresentOrFuture.nullable(),
 });
 
 export const CreateTaskSchema = z.object({
@@ -13,10 +27,7 @@ export const CreateTaskSchema = z.object({
   title: z.string().trim().min(1, "Title is required").max(200),
   notes: z.string().max(5000).optional(),
   advisory_minutes: z.number().int().min(1).max(1440).optional(),
-  due_date: z
-    .string()
-    .regex(/^\d{4}-\d{2}-\d{2}$/, "due_date must be YYYY-MM-DD")
-    .optional(),
+  due_date: dateInPresentOrFuture.optional(),
   recurrence_rule: RecurrenceRuleSchema.nullable().optional(),
 });
 
@@ -26,11 +37,7 @@ export const UpdateTaskSchema = z.object({
   is_complete: z.boolean().optional(),
   advisory_minutes: z.number().int().min(1).max(1440).nullable().optional(),
   position: z.number().int().min(0).optional(),
-  due_date: z
-    .string()
-    .regex(/^\d{4}-\d{2}-\d{2}$/)
-    .nullable()
-    .optional(),
+  due_date: dateInPresentOrFuture.nullable().optional(),
   recurrence_rule: RecurrenceRuleSchema.nullable().optional(),
 });
 

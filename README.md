@@ -52,11 +52,11 @@ npm install
 
 ### 2. Supabase
 
-Create a free project at [supabase.com](https://supabase.com), then in **SQL Editor** run:
+Create a free project at [supabase.com](https://supabase.com), then in **SQL Editor** paste and run the block below. It's idempotent — safe to re-run if you ever need to fix a partial setup.
 
 ```sql
--- Profiles
-create table profiles (
+-- ── Profiles ──────────────────────────────────────────────────────────────
+create table if not exists profiles (
   id uuid primary key default gen_random_uuid(),
   email text unique not null,
   display_name text,
@@ -64,8 +64,8 @@ create table profiles (
   created_at timestamptz default now()
 );
 
--- Pillars
-create table pillars (
+-- ── Pillars ───────────────────────────────────────────────────────────────
+create table if not exists pillars (
   id uuid primary key default gen_random_uuid(),
   user_id uuid not null references profiles(id) on delete cascade,
   slug text not null,
@@ -78,8 +78,11 @@ create table pillars (
   created_at timestamptz default now()
 );
 
--- Tasks
-create table tasks (
+create index if not exists pillars_user_idx on pillars (user_id, position);
+create unique index if not exists pillars_user_slug_unique on pillars (user_id, slug);
+
+-- ── Tasks ─────────────────────────────────────────────────────────────────
+create table if not exists tasks (
   id uuid primary key default gen_random_uuid(),
   pillar_id uuid not null references pillars(id) on delete cascade,
   user_id uuid not null references profiles(id) on delete cascade,
@@ -95,8 +98,11 @@ create table tasks (
   updated_at timestamptz default now()
 );
 
--- Steps
-create table steps (
+create index if not exists tasks_pillar_idx on tasks (pillar_id, position);
+create index if not exists tasks_user_updated_idx on tasks (user_id, updated_at desc);
+
+-- ── Steps ─────────────────────────────────────────────────────────────────
+create table if not exists steps (
   id uuid primary key default gen_random_uuid(),
   task_id uuid not null references tasks(id) on delete cascade,
   user_id uuid not null references profiles(id) on delete cascade,
@@ -106,8 +112,10 @@ create table steps (
   created_at timestamptz default now()
 );
 
--- Chat messages
-create table chat_messages (
+create index if not exists steps_task_idx on steps (task_id, position);
+
+-- ── Chat messages ─────────────────────────────────────────────────────────
+create table if not exists chat_messages (
   id uuid primary key default gen_random_uuid(),
   user_id uuid not null references profiles(id) on delete cascade,
   pillar_slug text not null,
@@ -116,7 +124,10 @@ create table chat_messages (
   created_at timestamptz default now()
 );
 
--- Auto-update updated_at on tasks
+create index if not exists chat_messages_user_pillar_idx
+  on chat_messages (user_id, pillar_slug, created_at);
+
+-- ── updated_at trigger for tasks ─────────────────────────────────────────
 create or replace function update_updated_at()
 returns trigger as $$
 begin
@@ -125,6 +136,7 @@ begin
 end;
 $$ language plpgsql;
 
+drop trigger if exists tasks_updated_at on tasks;
 create trigger tasks_updated_at
   before update on tasks
   for each row execute function update_updated_at();
