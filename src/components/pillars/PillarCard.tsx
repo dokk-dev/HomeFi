@@ -8,8 +8,7 @@ interface PillarCardProps {
 
 export function PillarCard({ pillar }: PillarCardProps) {
   const total = pillar.task_count ?? 0;
-  const completed = pillar.completed_count ?? 0;
-  const mastery = total > 0 ? Math.round((completed / total) * 100) : 0;
+  const mastery = pillar.mastery ?? 0;
   const Icon = resolveIcon(pillar.slug, pillar.icon_key);
 
   return (
@@ -37,7 +36,7 @@ export function PillarCard({ pillar }: PillarCardProps) {
 
       {/* Mastery label */}
       <div className="text-[10px] text-outline font-label font-bold uppercase tracking-widest mb-6">
-        {total === 0 ? "No tasks yet" : `Mastery: ${mastery}%`}
+        {mastery === 0 ? (total === 0 ? "No tasks yet" : "No tests taken") : `Mastery: ${mastery}%`}
       </div>
 
       {/* Progress bar */}

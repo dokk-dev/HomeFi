@@ -33,6 +33,8 @@ export const GET = withSession(async (_req, userId) => {
   return Response.json(enriched);
 });
 
+const MAX_PILLARS = 6;
+
 export const POST = withSession(async (req, userId) => {
   const parsed = CreatePillarSchema.safeParse(await req.json());
   if (!parsed.success) {
@@ -42,15 +44,22 @@ export const POST = withSession(async (req, userId) => {
   const { label, color, description, icon_key } = parsed.data;
   const supabase = getSupabaseAdminClient();
 
-  // Derive base slug from label
-  const baseSlug = label.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/(^-|-$)/g, "").slice(0, 50) || "pillar";
-
   // Find next position and check slug conflict in one query
   const { data: existing } = await supabase
     .from("pillars")
     .select("position, slug")
     .eq("user_id", userId)
     .order("position", { ascending: false });
+
+  if ((existing?.length ?? 0) >= MAX_PILLARS) {
+    return Response.json(
+      { error: `Pillar limit reached (max ${MAX_PILLARS}). Delete one before adding another.` },
+      { status: 409 },
+    );
+  }
+
+  // Derive base slug from label
+  const baseSlug = label.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/(^-|-$)/g, "").slice(0, 50) || "pillar";
 
   const nextPosition = (existing?.[0]?.position ?? -1) + 1;
   const slugTaken = existing?.some((p) => p.slug === baseSlug);

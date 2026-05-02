@@ -43,7 +43,7 @@ export default async function PillarPage({ params }: Props) {
 
   const total = tasks.length;
   const completed = tasks.filter((t) => t.is_complete).length;
-  const mastery = total > 0 ? Math.round((completed / total) * 100) : 0;
+  const mastery = pillar.mastery ?? 0;
 
   return (
     <PillarPageClient

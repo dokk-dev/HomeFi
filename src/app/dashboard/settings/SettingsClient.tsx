@@ -429,8 +429,12 @@ export function SettingsClient({ name, email, avatarUrl, pillars: initialPillars
                   );
                 })}
 
-                {/* New pillar form */}
-                {showNewForm ? (
+                {/* New pillar form (capped at 6) */}
+                {pillars.length >= 6 ? (
+                  <div className="w-full py-3 rounded-2xl border-2 border-dashed border-outline-variant/20 text-outline text-center text-xs font-semibold">
+                    Pillar limit reached (6 max). Delete one to add another.
+                  </div>
+                ) : showNewForm ? (
                   <div className="bg-surface-container-low rounded-2xl border border-primary/20 p-4">
                     <p className="text-[10px] font-bold uppercase tracking-widest text-outline mb-3">New Pillar</p>
                     <div className="flex flex-wrap items-center gap-3">

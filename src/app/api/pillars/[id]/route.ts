@@ -37,12 +37,20 @@ export const DELETE = withSessionAndParams<Params>(async (_req, { params }, user
 
   const { data: pillar } = await supabase
     .from("pillars")
-    .select("id")
+    .select("id, slug")
     .eq("id", params.id)
     .eq("user_id", userId)
     .maybeSingle();
 
   if (!pillar) return Response.json({ error: "Pillar not found" }, { status: 404 });
+
+  // chat_messages references the pillar by slug (text), not FK — clean it up explicitly.
+  // tasks, steps, and quiz_results cascade via FK.
+  await supabase
+    .from("chat_messages")
+    .delete()
+    .eq("user_id", userId)
+    .eq("pillar_slug", pillar.slug);
 
   const { error } = await supabase
     .from("pillars")

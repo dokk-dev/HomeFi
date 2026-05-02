@@ -12,28 +12,14 @@ export default async function AiTutorPage() {
 
   const { data: pillars } = await supabase
     .from("pillars")
-    .select("id, slug, label, color, icon_key")
+    .select("id, slug, label, color, icon_key, mastery")
     .eq("user_id", session.user.id)
     .order("position");
 
-  // Fetch mastery per pillar
-  const { data: tasks } = await supabase
-    .from("tasks")
-    .select("pillar_id, is_complete")
-    .eq("user_id", session.user.id);
-
-  const masteryMap: Record<string, { total: number; completed: number }> = {};
-  for (const t of tasks ?? []) {
-    if (!masteryMap[t.pillar_id]) masteryMap[t.pillar_id] = { total: 0, completed: 0 };
-    masteryMap[t.pillar_id].total++;
-    if (t.is_complete) masteryMap[t.pillar_id].completed++;
-  }
-
-  const enrichedPillars = (pillars ?? []).map((p) => {
-    const m = masteryMap[p.id] ?? { total: 0, completed: 0 };
-    const pct = m.total > 0 ? Math.round((m.completed / m.total) * 100) : 0;
-    return { ...p, mastery: pct };
-  });
+  const enrichedPillars = (pillars ?? []).map((p) => ({
+    ...p,
+    mastery: p.mastery ?? 0,
+  }));
 
   const displayName = session.user.name ?? "Architect";
 

@@ -7,6 +7,13 @@ export interface Profile {
   updated_at: string;
 }
 
+export interface CompetencyArea {
+  name: string;
+  description: string;
+  weight: number;
+  target_skills: string[];
+}
+
 export interface Pillar {
   id: string;
   user_id: string;
@@ -16,10 +23,23 @@ export interface Pillar {
   color: string;
   icon_key: string;
   position: number;
+  mastery: number;
+  competency_areas: CompetencyArea[];
   created_at: string;
   task_count?: number;
   completed_count?: number;
   streak?: number;
+}
+
+export interface QuizResult {
+  id: string;
+  user_id: string;
+  pillar_id: string;
+  competency_name: string;
+  score: number;
+  max_score: number;
+  questions: unknown;
+  taken_at: string;
 }
 
 export interface RecurrenceRule {

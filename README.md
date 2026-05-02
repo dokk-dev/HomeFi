@@ -75,8 +75,12 @@ create table if not exists pillars (
   icon_key text,
   position integer not null default 0,
   mastery integer not null default 0,
+  competency_areas jsonb not null default '[]'::jsonb,
   created_at timestamptz default now()
 );
+
+-- Backfill new column on existing rows (no-op if already added)
+alter table pillars add column if not exists competency_areas jsonb not null default '[]'::jsonb;
 
 create index if not exists pillars_user_idx on pillars (user_id, position);
 create unique index if not exists pillars_user_slug_unique on pillars (user_id, slug);
@@ -126,6 +130,23 @@ create table if not exists chat_messages (
 
 create index if not exists chat_messages_user_pillar_idx
   on chat_messages (user_id, pillar_slug, created_at);
+
+-- ── Quiz results (drives mastery scoring) ────────────────────────────────
+create table if not exists quiz_results (
+  id uuid primary key default gen_random_uuid(),
+  user_id uuid not null references profiles(id) on delete cascade,
+  pillar_id uuid not null references pillars(id) on delete cascade,
+  competency_name text not null,
+  score numeric(4,3) not null check (score >= 0 and score <= 1),
+  max_score integer not null default 10,
+  questions jsonb not null default '[]'::jsonb,
+  taken_at timestamptz default now()
+);
+
+create index if not exists quiz_results_pillar_competency_idx
+  on quiz_results (pillar_id, competency_name, taken_at);
+create index if not exists quiz_results_user_idx
+  on quiz_results (user_id, taken_at);
 
 -- ── updated_at trigger for tasks ─────────────────────────────────────────
 create or replace function update_updated_at()
