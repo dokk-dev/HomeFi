@@ -13,6 +13,22 @@ export const PATCH = withSessionAndParams<Params>(async (req, { params }, userId
   if (typeof body.description === "string") updateData.description = body.description;
   if (typeof body.icon_key === "string") updateData.icon_key = body.icon_key;
   if (typeof body.mastery === "number") updateData.mastery = Math.max(0, Math.min(100, Math.round(body.mastery)));
+  if (Array.isArray(body.competency_areas)) {
+    // Light shape check; full validation happens at the generate endpoint.
+    const areas = body.competency_areas.filter(
+      (a: unknown): a is { name: string; description: string; weight: number; target_skills: string[] } => {
+        if (!a || typeof a !== "object") return false;
+        const x = a as Record<string, unknown>;
+        return (
+          typeof x.name === "string" &&
+          typeof x.description === "string" &&
+          typeof x.weight === "number" &&
+          Array.isArray(x.target_skills)
+        );
+      },
+    );
+    updateData.competency_areas = areas.slice(0, 7);
+  }
 
   if (Object.keys(updateData).length === 0) {
     return Response.json({ error: "No fields to update" }, { status: 400 });

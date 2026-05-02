@@ -7,16 +7,25 @@ import Image from "next/image";
 import {
   User, Layout, Bell, Shield,
   Moon, Sun, SunMoon, BellOff, Music, Archive,
-  Check, Camera, Sparkles, Plus, Trash2,
+  Check, Camera, Sparkles, Plus, Trash2, Target,
 } from "lucide-react";
 import { ICON_REGISTRY, resolveIcon } from "@/lib/icons/pillarIcons";
+import { CompetencyEditor } from "@/components/pillars/CompetencyEditor";
+import type { CompetencyArea } from "@/lib/types";
 
 type Tab = "profile" | "workspace" | "notifications" | "security";
 type Theme = "dark" | "light" | "auto";
 
 const PILLAR_COLORS = ["#6366f1", "#ec4899", "#f59e0b", "#10b981", "#3b82f6", "#8b5cf6", "#ef4444", "#14b8a6"];
 
-interface PillarRow { id: string; slug: string; label: string; color: string; icon_key: string | null; }
+interface PillarRow {
+  id: string;
+  slug: string;
+  label: string;
+  color: string;
+  icon_key: string | null;
+  competency_areas?: CompetencyArea[];
+}
 interface Props { name: string; email: string; avatarUrl: string | null; pillars: PillarRow[]; }
 
 function Toggle({ checked, onChange }: { checked: boolean; onChange: () => void }) {
@@ -62,6 +71,9 @@ export function SettingsClient({ name, email, avatarUrl, pillars: initialPillars
   const [newLabel, setNewLabel] = useState("");
   const [newColor, setNewColor] = useState("#6366f1");
   const [creatingPillar, setCreatingPillar] = useState(false);
+
+  // Competency editor
+  const [editingPillarId, setEditingPillarId] = useState<string | null>(null);
 
   // Security
   const [deleteConfirm, setDeleteConfirm] = useState(false);
@@ -200,8 +212,10 @@ export function SettingsClient({ name, email, avatarUrl, pillars: initialPillars
         setNewLabel("");
         setNewColor("#6366f1");
         setShowNewForm(false);
-        toast("Pillar created");
+        toast("Pillar created — define the mastery rubric next");
         window.dispatchEvent(new CustomEvent("pillars-changed"));
+        // Immediately open the rubric editor for the new pillar
+        setEditingPillarId(pillar.id);
       } else {
         const err = await res.json().catch(() => ({})) as { error?: string };
         toast(err.error ?? "Failed to create pillar");
@@ -415,6 +429,28 @@ export function SettingsClient({ name, email, avatarUrl, pillars: initialPillars
                           {isSaving ? "Saving…" : isSaved ? <><Check size={12} /> Saved</> : "Save"}
                         </button>
 
+                        {/* Rubric */}
+                        <button
+                          onClick={() => setEditingPillarId(pillar.id)}
+                          className="w-8 h-8 flex items-center justify-center rounded-lg text-outline hover:bg-surface-container transition-colors flex-shrink-0 relative"
+                          title={
+                            (pillar.competency_areas?.length ?? 0) > 0
+                              ? "Edit mastery rubric"
+                              : "Set mastery rubric"
+                          }
+                          style={{
+                            color:
+                              (pillar.competency_areas?.length ?? 0) > 0
+                                ? pillar.color
+                                : undefined,
+                          }}
+                        >
+                          <Target size={14} />
+                          {(pillar.competency_areas?.length ?? 0) === 0 && (
+                            <span className="absolute -top-0.5 -right-0.5 w-2 h-2 rounded-full bg-amber-400" />
+                          )}
+                        </button>
+
                         {/* Delete */}
                         <button
                           onClick={() => handleDeletePillar(pillar.id)}
@@ -546,6 +582,27 @@ export function SettingsClient({ name, email, avatarUrl, pillars: initialPillars
 
         </div>
       </div>
+
+      {editingPillarId && (() => {
+        const editingPillar = pillars.find((p) => p.id === editingPillarId);
+        if (!editingPillar) return null;
+        return (
+          <CompetencyEditor
+            pillarId={editingPillar.id}
+            pillarLabel={editingPillar.label}
+            pillarColor={editingPillar.color}
+            initial={editingPillar.competency_areas ?? []}
+            onClose={() => setEditingPillarId(null)}
+            onSaved={(competencies) => {
+              setPillars((prev) =>
+                prev.map((p) =>
+                  p.id === editingPillarId ? { ...p, competency_areas: competencies } : p,
+                ),
+              );
+            }}
+          />
+        );
+      })()}
     </div>
   );
 }
