@@ -1,6 +1,7 @@
 import Link from "next/link";
 import type { Pillar } from "@/lib/types";
 import { resolveIcon } from "@/lib/icons/pillarIcons";
+import { getLevel } from "@/lib/quiz/mastery";
 
 interface PillarCardProps {
   pillar: Pillar;
@@ -9,6 +10,7 @@ interface PillarCardProps {
 export function PillarCard({ pillar }: PillarCardProps) {
   const total = pillar.task_count ?? 0;
   const mastery = pillar.mastery ?? 0;
+  const level = getLevel(mastery);
   const Icon = resolveIcon(pillar.slug, pillar.icon_key);
 
   return (
@@ -35,8 +37,15 @@ export function PillarCard({ pillar }: PillarCardProps) {
       </h3>
 
       {/* Mastery label */}
-      <div className="text-[10px] text-outline font-label font-bold uppercase tracking-widest mb-6">
-        {mastery === 0 ? (total === 0 ? "No tasks yet" : "No tests taken") : `Mastery: ${mastery}%`}
+      <div className="text-[10px] font-label font-bold uppercase tracking-widest mb-6 flex items-center gap-1.5">
+        {mastery === 0 ? (
+          <span className="text-outline">{total === 0 ? "No tasks yet" : "Untested"}</span>
+        ) : (
+          <>
+            <span style={{ color: pillar.color }}>{level.name}</span>
+            <span className="text-outline">· {mastery}%</span>
+          </>
+        )}
       </div>
 
       {/* Progress bar */}

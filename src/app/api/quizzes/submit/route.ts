@@ -3,6 +3,7 @@ import { withSession } from "@/lib/api/withSession";
 import { getSupabaseAdminClient } from "@/lib/supabase/admin";
 import { generateCompletion, parseJSONLoose } from "@/lib/ai/generate";
 import { checkRateLimit } from "@/lib/api/rateLimit";
+import { computePillarMastery } from "@/lib/quiz/mastery";
 import type { CompetencyArea } from "@/lib/types";
 import type { GradedQuestion, QuizGradeResult } from "@/lib/quiz/types";
 
@@ -187,31 +188,22 @@ export const POST = withSession(async (req, userId) => {
     return Response.json({ error: `Failed to save results: ${insertError.message}` }, { status: 500 });
   }
 
-  // ── Phase 3 mastery: weighted average of the latest score per competency ─
-  // Phase 4 will replace this with EMA + decay across history.
-  const { data: latestRows } = await supabase
+  // ── Mastery: per-competency EMA + decay, weighted across rubric ─────────
+  const { data: allHistory } = await supabase
     .from("quiz_results")
     .select("competency_name, score, taken_at")
     .eq("pillar_id", pillar.id)
-    .eq("user_id", userId)
-    .order("taken_at", { ascending: false });
+    .eq("user_id", userId);
 
-  // Take most recent score per competency
-  const latestByCompetency: Record<string, number> = {};
-  for (const row of latestRows ?? []) {
-    if (latestByCompetency[row.competency_name] === undefined) {
-      latestByCompetency[row.competency_name] = Number(row.score);
-    }
-  }
-
-  let weightedSum = 0;
-  let totalWeight = 0;
-  for (const c of competencies) {
-    const score = latestByCompetency[c.name] ?? 0;
-    weightedSum += score * c.weight;
-    totalWeight += c.weight;
-  }
-  const newMastery = totalWeight > 0 ? Math.round((weightedSum / totalWeight) * 100) : 0;
+  const mastery = computePillarMastery(
+    competencies,
+    (allHistory ?? []).map((r) => ({
+      competency_name: r.competency_name,
+      score: Number(r.score),
+      taken_at: r.taken_at,
+    })),
+  );
+  const newMastery = mastery.overall;
 
   await supabase
     .from("pillars")

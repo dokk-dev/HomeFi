@@ -1,12 +1,14 @@
 "use client";
 
 import { useState, useRef, useEffect } from "react";
-import { Zap, GraduationCap } from "lucide-react";
+import { useRouter } from "next/navigation";
+import { Zap, GraduationCap, Clock } from "lucide-react";
 import { TaskList, type TaskListHandle } from "@/components/tasks/TaskList";
 import { StudyAssistant } from "@/components/chat/StudyAssistant";
 import { QuizFlow } from "@/components/quiz/QuizFlow";
 import { resolveIcon } from "@/lib/icons/pillarIcons";
 import type { Task, CompetencyArea } from "@/lib/types";
+import type { PillarMastery } from "@/lib/quiz/mastery";
 
 interface Pillar {
   id: string;
@@ -21,16 +23,16 @@ interface Pillar {
 interface Props {
   pillar: Pillar;
   tasks: Task[];
-  mastery: number;
+  mastery: PillarMastery;
   completed: number;
   total: number;
 }
 
-export function PillarPageClient({ pillar, tasks, mastery: initialMastery, completed, total }: Props) {
+export function PillarPageClient({ pillar, tasks, mastery, completed, total }: Props) {
+  const router = useRouter();
   const [tutorOpen, setTutorOpen] = useState(false);
   const [zapReady, setZapReady] = useState(false);
   const [quizOpen, setQuizOpen] = useState(false);
-  const [mastery, setMastery] = useState(initialMastery);
   const PillarIcon = resolveIcon(pillar.slug, pillar.icon_key);
   const taskListRef = useRef<TaskListHandle>(null);
 
@@ -93,15 +95,23 @@ export function PillarPageClient({ pillar, tasks, mastery: initialMastery, compl
                 <div className="flex-1 h-[3px] bg-surface-container-highest rounded-full overflow-hidden">
                   <div
                     className="h-full rounded-full transition-all duration-500"
-                    style={{ width: `${mastery}%`, backgroundColor: pillar.color }}
+                    style={{ width: `${mastery.overall}%`, backgroundColor: pillar.color }}
                   />
                 </div>
-                <span className="text-[10px] font-label font-bold text-outline uppercase tracking-widest whitespace-nowrap">
-                  {total > 0 ? `${completed}/${total} · ` : ""}
-                  {mastery}% mastery
+                <span
+                  className="text-[10px] font-label font-bold uppercase tracking-widest whitespace-nowrap"
+                  style={{ color: pillar.color }}
+                >
+                  {mastery.level.name} · {mastery.overall}%
                 </span>
               </div>
             </div>
+
+            {total > 0 && (
+              <div className="mt-2 text-[10px] text-outline font-label uppercase tracking-widest">
+                {completed}/{total} tasks complete
+              </div>
+            )}
 
             {/* Take test CTA */}
             <div className="mt-4">
@@ -126,6 +136,20 @@ export function PillarPageClient({ pillar, tasks, mastery: initialMastery, compl
               )}
             </div>
           </div>
+
+          {/* Per-competency breakdown */}
+          {hasRubric && (
+            <div className="mb-8">
+              <div className="text-[10px] font-label font-bold text-outline uppercase tracking-[0.2em] mb-3">
+                Competency Breakdown
+              </div>
+              <div className="space-y-2">
+                {mastery.per_competency.map((c) => (
+                  <CompetencyRow key={c.name} competency={c} pillarColor={pillar.color} />
+                ))}
+              </div>
+            </div>
+          )}
 
           {/* Task list */}
           <TaskList
@@ -182,9 +206,84 @@ export function PillarPageClient({ pillar, tasks, mastery: initialMastery, compl
           pillarId={pillar.id}
           pillarLabel={pillar.label}
           pillarColor={pillar.color}
-          onClose={() => setQuizOpen(false)}
-          onMasteryChanged={(m) => setMastery(m)}
+          onClose={() => {
+            setQuizOpen(false);
+            // Re-fetch server data so the per-competency breakdown reflects the new quiz
+            router.refresh();
+          }}
+          onMasteryChanged={() => {
+            // Server will recompute; refresh on close handles the visual update
+          }}
         />
+      )}
+    </div>
+  );
+}
+
+function CompetencyRow({
+  competency,
+  pillarColor,
+}: {
+  competency: PillarMastery["per_competency"][number];
+  pillarColor: string;
+}) {
+  const isStale =
+    competency.days_since_last !== null && competency.days_since_last > 7;
+  const tested = competency.quiz_count > 0;
+
+  return (
+    <div
+      className="bg-surface-container-low rounded-lg p-3 border-l-2"
+      style={{ borderColor: tested ? pillarColor : "rgba(255,255,255,0.1)" }}
+    >
+      <div className="flex items-start justify-between gap-3 mb-2">
+        <div className="flex-1 min-w-0">
+          <div className="flex items-center gap-2 mb-0.5">
+            <span className="text-sm font-bold text-on-surface truncate">
+              {competency.name}
+            </span>
+            <span
+              className="text-[9px] font-bold uppercase tracking-widest px-1.5 py-0.5 rounded"
+              style={{
+                color: tested ? pillarColor : "var(--color-outline)",
+                backgroundColor: tested ? `${pillarColor}15` : "rgba(255,255,255,0.05)",
+              }}
+            >
+              {competency.level.name}
+            </span>
+          </div>
+          <p className="text-[11px] text-outline line-clamp-2">
+            {competency.description}
+          </p>
+        </div>
+        <div className="text-right flex-shrink-0">
+          <div className="text-base font-bold text-on-surface leading-none">
+            {competency.score}%
+          </div>
+          <div className="text-[9px] text-outline mt-1">
+            w {competency.weight}/10
+          </div>
+        </div>
+      </div>
+      <div className="flex items-center gap-3">
+        <div className="flex-1 h-1 bg-surface-container rounded-full overflow-hidden">
+          <div
+            className="h-full rounded-full transition-all duration-500"
+            style={{
+              width: `${competency.score}%`,
+              backgroundColor: tested ? pillarColor : "rgba(255,255,255,0.1)",
+            }}
+          />
+        </div>
+        <span className="text-[10px] text-outline whitespace-nowrap">
+          {tested ? `${competency.quiz_count} quiz${competency.quiz_count === 1 ? "" : "es"}` : "untested"}
+        </span>
+      </div>
+      {isStale && competency.decayed_by > 0 && (
+        <div className="flex items-center gap-1 mt-2 text-[10px] text-amber-400">
+          <Clock size={10} />
+          Decayed {competency.decayed_by}pts · last tested {Math.floor(competency.days_since_last!)}d ago
+        </div>
       )}
     </div>
   );
