@@ -1,11 +1,12 @@
 "use client";
 
 import { useState, useRef, useEffect } from "react";
-import { Zap } from "lucide-react";
+import { Zap, GraduationCap } from "lucide-react";
 import { TaskList, type TaskListHandle } from "@/components/tasks/TaskList";
 import { StudyAssistant } from "@/components/chat/StudyAssistant";
+import { QuizFlow } from "@/components/quiz/QuizFlow";
 import { resolveIcon } from "@/lib/icons/pillarIcons";
-import type { Task } from "@/lib/types";
+import type { Task, CompetencyArea } from "@/lib/types";
 
 interface Pillar {
   id: string;
@@ -14,6 +15,7 @@ interface Pillar {
   description: string | null;
   color: string;
   icon_key: string | null;
+  competency_areas?: CompetencyArea[];
 }
 
 interface Props {
@@ -24,11 +26,15 @@ interface Props {
   total: number;
 }
 
-export function PillarPageClient({ pillar, tasks, mastery, completed, total }: Props) {
+export function PillarPageClient({ pillar, tasks, mastery: initialMastery, completed, total }: Props) {
   const [tutorOpen, setTutorOpen] = useState(false);
   const [zapReady, setZapReady] = useState(false);
+  const [quizOpen, setQuizOpen] = useState(false);
+  const [mastery, setMastery] = useState(initialMastery);
   const PillarIcon = resolveIcon(pillar.slug, pillar.icon_key);
   const taskListRef = useRef<TaskListHandle>(null);
+
+  const hasRubric = (pillar.competency_areas?.length ?? 0) >= 3;
 
   useEffect(() => {
     // Zap pops in after TopBar Zap has finished exiting
@@ -83,18 +89,40 @@ export function PillarPageClient({ pillar, tasks, mastery, completed, total }: P
                   <PillarIcon size={20} style={{ color: pillar.color }} />
                 </div>
               )}
-              {total > 0 && (
-                <div className="flex-1 flex items-center gap-3">
-                  <div className="flex-1 h-[3px] bg-surface-container-highest rounded-full overflow-hidden">
-                    <div
-                      className="h-full rounded-full transition-all duration-500"
-                      style={{ width: `${mastery}%`, backgroundColor: pillar.color }}
-                    />
-                  </div>
-                  <span className="text-[10px] font-label font-bold text-outline uppercase tracking-widest whitespace-nowrap">
-                    {completed}/{total} · {mastery}%
-                  </span>
+              <div className="flex-1 flex items-center gap-3">
+                <div className="flex-1 h-[3px] bg-surface-container-highest rounded-full overflow-hidden">
+                  <div
+                    className="h-full rounded-full transition-all duration-500"
+                    style={{ width: `${mastery}%`, backgroundColor: pillar.color }}
+                  />
                 </div>
+                <span className="text-[10px] font-label font-bold text-outline uppercase tracking-widest whitespace-nowrap">
+                  {total > 0 ? `${completed}/${total} · ` : ""}
+                  {mastery}% mastery
+                </span>
+              </div>
+            </div>
+
+            {/* Take test CTA */}
+            <div className="mt-4">
+              <button
+                onClick={() => setQuizOpen(true)}
+                disabled={!hasRubric}
+                className="inline-flex items-center gap-2 px-4 py-2 rounded-lg text-xs font-bold transition-all disabled:opacity-40 disabled:cursor-not-allowed"
+                style={{
+                  backgroundColor: hasRubric ? `${pillar.color}15` : undefined,
+                  color: hasRubric ? pillar.color : undefined,
+                  border: `1px solid ${hasRubric ? pillar.color + "40" : "var(--color-outline-variant)"}`,
+                }}
+                title={hasRubric ? "Take a 10-question test" : "Set the mastery rubric in Settings first"}
+              >
+                <GraduationCap size={14} />
+                {hasRubric ? "Take mastery test" : "Set rubric first"}
+              </button>
+              {!hasRubric && (
+                <p className="text-[10px] text-outline mt-1.5">
+                  Mastery is earned by passing tests. Define the rubric for this pillar in <a href="/dashboard/settings" className="underline hover:text-on-surface transition-colors">Settings</a>.
+                </p>
               )}
             </div>
           </div>
@@ -147,6 +175,17 @@ export function PillarPageClient({ pillar, tasks, mastery, completed, total }: P
       >
         <Zap size={20} color="white" />
       </button>
+
+      {/* ── Quiz modal ─────────────────────────────────────────────────────── */}
+      {quizOpen && (
+        <QuizFlow
+          pillarId={pillar.id}
+          pillarLabel={pillar.label}
+          pillarColor={pillar.color}
+          onClose={() => setQuizOpen(false)}
+          onMasteryChanged={(m) => setMastery(m)}
+        />
+      )}
     </div>
   );
 }
