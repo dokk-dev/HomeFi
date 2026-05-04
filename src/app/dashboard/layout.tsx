@@ -2,6 +2,7 @@ import { Sidebar } from "@/components/layout/Sidebar";
 import { TopBar } from "@/components/layout/TopBar";
 import { MobileNav } from "@/components/layout/MobileNav";
 import { OnboardingModal } from "@/components/onboarding/OnboardingModal";
+import { UpdateNotice } from "@/components/onboarding/UpdateNotice";
 
 export default function DashboardLayout({
   children,
@@ -17,6 +18,7 @@ export default function DashboardLayout({
       </main>
       <MobileNav />
       <OnboardingModal />
+      <UpdateNotice />
     </div>
   );
 }
