@@ -123,6 +123,14 @@ async function main() {
     required: !current.SUPABASE_SERVICE_ROLE_KEY,
     help: "Keep this secret — it bypasses Row Level Security.",
   });
+  note("");
+  note("Postgres connection string (used by the update script to apply migrations).");
+  note("Find it in Supabase → Project Settings → Database → Connection string → URI.");
+  note("Replace [YOUR-PASSWORD] with your DB password.");
+  const DATABASE_URL = await ask("Postgres connection URL", {
+    default: current.DATABASE_URL,
+    help: "Looks like: postgresql://postgres:<password>@db.xxxx.supabase.co:5432/postgres",
+  });
 
   // ── OAuth: GitHub ──
   header("GitHub OAuth (sign-in provider)");
@@ -145,6 +153,16 @@ async function main() {
     console.log(`${C.yellow}⚠  No OAuth provider configured — sign-in won't work yet.${C.reset}`);
     console.log(`${C.yellow}   Re-run this wizard once you've registered at least one.${C.reset}`);
   }
+
+  // ── Notion (optional integration) ──
+  header("Notion integration (optional — skip if you don't want sync)");
+  note("Create a public OAuth integration: https://www.notion.so/my-integrations");
+  note(`  Redirect URI: ${NEXTAUTH_URL}/api/integrations/notion/callback`);
+  const NOTION_CLIENT_ID = await ask("Notion Client ID", { default: current.NOTION_CLIENT_ID });
+  const NOTION_CLIENT_SECRET = await ask("Notion Client Secret", { default: current.NOTION_CLIENT_SECRET });
+  const NOTION_REDIRECT_URI = await ask("Notion Redirect URI", {
+    default: current.NOTION_REDIRECT_URI || `${NEXTAUTH_URL}/api/integrations/notion/callback`,
+  });
 
   // ── Ollama ──
   header("Ollama (required — local AI provider)");
@@ -179,6 +197,12 @@ GOOGLE_CLIENT_SECRET=${quote(GOOGLE_CLIENT_SECRET)}
 NEXT_PUBLIC_SUPABASE_URL=${quote(NEXT_PUBLIC_SUPABASE_URL)}
 NEXT_PUBLIC_SUPABASE_ANON_KEY=${quote(NEXT_PUBLIC_SUPABASE_ANON_KEY)}
 SUPABASE_SERVICE_ROLE_KEY=${quote(SUPABASE_SERVICE_ROLE_KEY)}
+DATABASE_URL=${quote(DATABASE_URL)}
+
+# ── Notion (optional integration) ──
+NOTION_CLIENT_ID=${quote(NOTION_CLIENT_ID)}
+NOTION_CLIENT_SECRET=${quote(NOTION_CLIENT_SECRET)}
+NOTION_REDIRECT_URI=${quote(NOTION_REDIRECT_URI)}
 
 # ── Ollama ──
 OLLAMA_BASE_URL=${quote(OLLAMA_BASE_URL)}
@@ -190,9 +214,14 @@ OLLAMA_MODEL=${quote(OLLAMA_MODEL)}
 
   // ── Final reminders ──
   header("Next steps");
-  console.log(`1. ${C.bold}Database schema:${C.reset} If this is a fresh Supabase project,`);
-  console.log(`   open Supabase → SQL Editor → paste the schema from README.md and run it.`);
-  console.log(`2. ${C.bold}Start the app:${C.reset} ${C.cyan}npm run dev${C.reset}`);
+  if (DATABASE_URL) {
+    console.log(`1. ${C.bold}Apply database schema:${C.reset} ${C.cyan}./update.command${C.reset} (or ${C.cyan}npm run update${C.reset})`);
+    console.log(`   This applies all SQL migrations to your Supabase project.`);
+  } else {
+    console.log(`1. ${C.yellow}DATABASE_URL was skipped${C.reset} — re-run setup to enable automatic migrations.`);
+    console.log(`   For now, paste ${C.bold}migrations/*.sql${C.reset} into Supabase → SQL Editor manually.`);
+  }
+  console.log(`2. ${C.bold}Start the app:${C.reset} ${C.cyan}./start.command${C.reset} (or ${C.cyan}npm run dev${C.reset})`);
   console.log(`   Then open ${C.cyan}${NEXTAUTH_URL}${C.reset}\n`);
 
   rl.close();

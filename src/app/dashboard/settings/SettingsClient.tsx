@@ -5,16 +5,32 @@ import { useSession } from "next-auth/react";
 import { useToast } from "@/components/ui/Toast";
 import Image from "next/image";
 import {
-  User, Layout, Bell, Shield,
+  User, Layout, Bell, Shield, Plug,
   Moon, Sun, SunMoon, BellOff, Music, Archive,
   Check, Camera, Sparkles, Plus, Trash2, Target,
+  Link2, RefreshCw, AlertCircle,
 } from "lucide-react";
 import { ICON_REGISTRY, resolveIcon } from "@/lib/icons/pillarIcons";
 import { CompetencyEditor } from "@/components/pillars/CompetencyEditor";
 import type { CompetencyArea } from "@/lib/types";
 
-type Tab = "profile" | "workspace" | "notifications" | "security";
+type Tab = "profile" | "workspace" | "integrations" | "notifications" | "security";
 type Theme = "dark" | "light" | "auto";
+
+interface NotionSyncSettings {
+  tasks: boolean;
+  pillars: boolean;
+  chat: boolean;
+  quiz: boolean;
+}
+
+interface NotionInfo {
+  configured: boolean;
+  connected: boolean;
+  workspaceName: string | null;
+  lastSyncedAt: string | null;
+  settings: NotionSyncSettings;
+}
 
 const PILLAR_COLORS = ["#6366f1", "#ec4899", "#f59e0b", "#10b981", "#3b82f6", "#8b5cf6", "#ef4444", "#14b8a6"];
 
@@ -26,7 +42,13 @@ interface PillarRow {
   icon_key: string | null;
   competency_areas?: CompetencyArea[];
 }
-interface Props { name: string; email: string; avatarUrl: string | null; pillars: PillarRow[]; }
+interface Props {
+  name: string;
+  email: string;
+  avatarUrl: string | null;
+  pillars: PillarRow[];
+  notion: NotionInfo;
+}
 
 function Toggle({ checked, onChange }: { checked: boolean; onChange: () => void }) {
   return (
@@ -37,10 +59,26 @@ function Toggle({ checked, onChange }: { checked: boolean; onChange: () => void 
   );
 }
 
-export function SettingsClient({ name, email, avatarUrl, pillars: initialPillars }: Props) {
+export function SettingsClient({ name, email, avatarUrl, pillars: initialPillars, notion: initialNotion }: Props) {
   const { update: updateSession } = useSession();
   const { toast } = useToast();
   const [activeTab, setActiveTab] = useState<Tab>("profile");
+
+  // Notion integration state
+  const [notion, setNotion] = useState<NotionInfo>(initialNotion);
+  const [notionSyncing, setNotionSyncing] = useState(false);
+  const [notionDisconnecting, setNotionDisconnecting] = useState(false);
+  interface NotionSyncLogRow {
+    id: string;
+    entity_type: string;
+    entity_id: string | null;
+    action: string;
+    status: string;
+    message: string | null;
+    synced_at: string;
+  }
+  const [notionLog, setNotionLog] = useState<NotionSyncLogRow[]>([]);
+  const [notionLogOpen, setNotionLogOpen] = useState(false);
 
   // Profile
   const [displayName, setDisplayName] = useState(name);
@@ -242,9 +280,78 @@ export function SettingsClient({ name, email, avatarUrl, pillars: initialPillars
     }
   }
 
+  // Read URL params on mount: tab focus + notion connect feedback
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const params = new URLSearchParams(window.location.search);
+    const tab = params.get("tab");
+    if (tab === "integrations") setActiveTab("integrations");
+    if (params.get("notion_connected") === "1") {
+      toast("Notion connected — try a sync now");
+    }
+    const err = params.get("notion_error");
+    if (err) toast(`Notion connect failed: ${err}`);
+    if (params.has("tab") || params.has("notion_connected") || params.has("notion_error")) {
+      window.history.replaceState({}, "", window.location.pathname);
+    }
+  }, [toast]);
+
+  async function handleNotionSync() {
+    setNotionSyncing(true);
+    try {
+      const res = await fetch("/api/integrations/notion/sync", { method: "POST" });
+      const body = await res.json().catch(() => ({}));
+      if (res.ok && body.ok) {
+        const { synced } = body as { synced: { pillars: number; tasks: number; chat: number; quiz: number } };
+        toast(`Synced — ${synced.pillars} pillars, ${synced.tasks} tasks, ${synced.chat} chat, ${synced.quiz} quiz`);
+        setNotion((n) => ({ ...n, lastSyncedAt: new Date().toISOString() }));
+      } else {
+        toast(body.errors?.[0] ?? "Sync failed");
+      }
+    } finally {
+      setNotionSyncing(false);
+    }
+  }
+
+  async function handleNotionDisconnect() {
+    setNotionDisconnecting(true);
+    try {
+      const res = await fetch("/api/integrations/notion/disconnect", { method: "POST" });
+      if (res.ok) {
+        setNotion((n) => ({ ...n, connected: false, workspaceName: null, lastSyncedAt: null }));
+        toast("Notion disconnected");
+      }
+    } finally {
+      setNotionDisconnecting(false);
+    }
+  }
+
+  async function handleSyncToggle(key: keyof NotionSyncSettings, value: boolean) {
+    const prev = notion.settings;
+    setNotion((n) => ({ ...n, settings: { ...n.settings, [key]: value } }));
+    const res = await fetch("/api/integrations/notion/settings", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ [key]: value }),
+    });
+    if (!res.ok) {
+      setNotion((n) => ({ ...n, settings: prev }));
+      toast("Couldn't save preference");
+    }
+  }
+
+  async function handleOpenLog() {
+    setNotionLogOpen((o) => !o);
+    if (notionLog.length === 0) {
+      const res = await fetch("/api/integrations/notion/log");
+      if (res.ok) setNotionLog(await res.json());
+    }
+  }
+
   const TABS = [
     { key: "profile" as Tab, label: "Profile", icon: User },
     { key: "workspace" as Tab, label: "Workspace", icon: Layout },
+    { key: "integrations" as Tab, label: "Integrations", icon: Plug },
     { key: "notifications" as Tab, label: "Notifications", icon: Bell },
     { key: "security" as Tab, label: "Security", icon: Shield },
   ];
@@ -513,6 +620,124 @@ export function SettingsClient({ name, email, avatarUrl, pillars: initialPillars
                     <Plus size={16} />
                     Add pillar
                   </button>
+                )}
+              </div>
+            </>
+          )}
+
+          {/* ── INTEGRATIONS ────────────────────────────────────────── */}
+          {activeTab === "integrations" && (
+            <>
+              <div>
+                <h1 className="text-2xl md:text-4xl font-extrabold font-headline tracking-tight text-on-surface">Integrations</h1>
+                <p className="text-on-surface-variant text-sm mt-1">Connect Meridian to outside tools.</p>
+              </div>
+
+              {/* Notion */}
+              <div className="bg-surface-container-low rounded-2xl border border-outline-variant/10 p-5 md:p-8 space-y-6">
+                <div className="flex items-start justify-between gap-4 flex-wrap">
+                  <div className="flex items-center gap-3">
+                    <div className="w-11 h-11 rounded-xl bg-surface-container-highest flex items-center justify-center flex-shrink-0">
+                      <Link2 size={20} className="text-on-surface-variant" />
+                    </div>
+                    <div>
+                      <h2 className="text-lg font-headline font-bold text-on-surface">Notion</h2>
+                      <p className="text-xs text-outline mt-0.5">
+                        {notion.connected
+                          ? `Connected to ${notion.workspaceName ?? "your workspace"}`
+                          : "Mirror your tasks, pillars, AI history, and quizzes into Notion."}
+                      </p>
+                    </div>
+                  </div>
+                  {!notion.configured ? (
+                    <div className="flex items-center gap-2 text-xs text-amber-300 bg-amber-500/10 border border-amber-500/20 rounded-lg px-3 py-2">
+                      <AlertCircle size={14} />
+                      Run <code className="font-mono">npm run setup</code> to add Notion OAuth credentials.
+                    </div>
+                  ) : notion.connected ? (
+                    <div className="flex gap-2 flex-wrap">
+                      <button
+                        onClick={handleNotionSync}
+                        disabled={notionSyncing}
+                        className="flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold bg-primary/10 text-primary hover:bg-primary/20 disabled:opacity-40 transition-all"
+                      >
+                        <RefreshCw size={13} className={notionSyncing ? "animate-spin" : ""} />
+                        {notionSyncing ? "Syncing…" : "Sync now"}
+                      </button>
+                      <button
+                        onClick={handleNotionDisconnect}
+                        disabled={notionDisconnecting}
+                        className="px-4 py-2 rounded-xl text-xs font-bold text-outline hover:text-red-400 border border-outline-variant/20 hover:border-red-400/40 disabled:opacity-40 transition-colors"
+                      >
+                        {notionDisconnecting ? "…" : "Disconnect"}
+                      </button>
+                    </div>
+                  ) : (
+                    <a
+                      href="/api/integrations/notion/authorize"
+                      className="px-5 py-2 rounded-xl text-xs font-headline font-bold text-white transition-all hover:opacity-90"
+                      style={{ background: "linear-gradient(135deg, #6366f1, #818cf8)" }}
+                    >
+                      Connect Notion
+                    </a>
+                  )}
+                </div>
+
+                {notion.connected && notion.lastSyncedAt && (
+                  <p className="text-[11px] text-outline">
+                    Last synced {new Date(notion.lastSyncedAt).toLocaleString()}
+                  </p>
+                )}
+
+                {/* What to sync */}
+                <div className={notion.connected ? "" : "opacity-50 pointer-events-none"}>
+                  <p className="text-[10px] font-bold uppercase tracking-widest text-outline mb-3">What to sync</p>
+                  <div className="space-y-2">
+                    {([
+                      { key: "tasks" as const, label: "Tasks", desc: "Each task becomes a row in its pillar's database." },
+                      { key: "pillars" as const, label: "Pillars", desc: "One Notion database per pillar." },
+                      { key: "chat" as const, label: "AI suggestions", desc: "Tutor chat history archived as Notion blocks." },
+                      { key: "quiz" as const, label: "Quiz / mastery", desc: "Quiz results logged in a Notion database." },
+                    ]).map(({ key, label, desc }) => (
+                      <div key={key} className="flex items-center gap-4 bg-surface-container rounded-xl p-4 border border-outline-variant/10">
+                        <div className="flex-1 min-w-0">
+                          <p className="text-sm font-semibold text-on-surface">{label}</p>
+                          <p className="text-xs text-outline mt-0.5">{desc}</p>
+                        </div>
+                        <Toggle
+                          checked={notion.settings[key]}
+                          onChange={() => handleSyncToggle(key, !notion.settings[key])}
+                        />
+                      </div>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Sync log (collapsible) */}
+                {notion.connected && (
+                  <details open={notionLogOpen} onToggle={(e) => {
+                    if ((e.target as HTMLDetailsElement).open && notionLog.length === 0) handleOpenLog();
+                  }}>
+                    <summary className="text-[10px] font-bold uppercase tracking-widest text-outline cursor-pointer hover:text-on-surface-variant transition-colors">
+                      Sync log (last 20)
+                    </summary>
+                    <div className="mt-3 space-y-1 max-h-72 overflow-y-auto">
+                      {notionLog.length === 0 ? (
+                        <p className="text-xs text-outline">No entries yet.</p>
+                      ) : notionLog.map((row) => (
+                        <div key={row.id} className="text-[11px] flex items-start gap-2 py-1 border-b border-outline-variant/5">
+                          <span className={`font-bold uppercase tracking-wider ${row.status === "error" ? "text-red-400" : "text-emerald-400"}`}>
+                            {row.action}
+                          </span>
+                          <span className="text-outline">{row.entity_type}</span>
+                          <span className="flex-1 text-on-surface-variant truncate">{row.message ?? ""}</span>
+                          <span className="text-outline whitespace-nowrap">
+                            {new Date(row.synced_at).toLocaleTimeString()}
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+                  </details>
                 )}
               </div>
             </>

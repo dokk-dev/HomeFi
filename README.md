@@ -29,14 +29,32 @@ A personal learning OS. Organize your study into customizable pillars, track tas
 
 1. Download or clone this repo.
 2. **macOS:** double-click `setup.command`. **Windows:** double-click `setup.bat`.
-3. Follow the prompts (it asks for Supabase keys, OAuth keys, and your Ollama URL).
-4. **macOS:** double-click `start.command`. **Windows:** double-click `start.bat`.
+3. Follow the prompts (it asks for Supabase keys, OAuth keys, your Postgres connection string, and your Ollama URL).
+4. **macOS:** double-click `update.command`. **Windows:** double-click `update.bat`. This applies the database schema.
+5. **macOS:** double-click `start.command`. **Windows:** double-click `start.bat`.
 
 The app opens at `http://localhost:3000`. The start script will auto-install dependencies and re-run setup if `.env.local` is missing.
 
 > First time on macOS, Gatekeeper may block `.command` files. Right-click → **Open** once to approve them.
 
-You'll still need a Supabase project with the schema applied (see below) and at least one OAuth provider registered before sign-in works.
+You'll need a Supabase project and at least one OAuth provider registered before sign-in works.
+
+---
+
+## Updating
+
+When new code lands on `main`:
+
+- **macOS:** double-click `update.command`. **Windows:** double-click `update.bat`.
+- Or: `npm run update`.
+
+The update script:
+1. Pulls the latest code (`git pull --ff-only`).
+2. Installs any new dependencies.
+3. Applies any pending SQL migrations from `migrations/` to your Supabase project (tracked in `_meridian_migrations`).
+4. Rebuilds the app.
+
+Migrations are forward-only and idempotent — re-running is safe. To skip steps: `npm run update -- --no-pull`, `--no-install`, or `--no-build`.
 
 ---
 
@@ -52,121 +70,15 @@ npm install
 
 ### 2. Supabase
 
-Create a free project at [supabase.com](https://supabase.com), then in **SQL Editor** paste and run the block below. It's idempotent — safe to re-run if you ever need to fix a partial setup.
+1. Create a free project at [supabase.com](https://supabase.com).
+2. In **Project Settings → API**, copy:
+   - Project URL → `NEXT_PUBLIC_SUPABASE_URL`
+   - anon key → `NEXT_PUBLIC_SUPABASE_ANON_KEY`
+   - service_role key → `SUPABASE_SERVICE_ROLE_KEY`
+3. In **Project Settings → Database → Connection string → URI**, copy the full Postgres URL → `DATABASE_URL` (substitute your DB password).
+4. Apply the schema with `npm run update` (or double-click `update.command` / `update.bat`). The migration runner reads from `migrations/` and tracks applied state in the `_meridian_migrations` table.
 
-```sql
--- ── Profiles ──────────────────────────────────────────────────────────────
-create table if not exists profiles (
-  id uuid primary key default gen_random_uuid(),
-  email text unique not null,
-  display_name text,
-  avatar_url text,
-  created_at timestamptz default now()
-);
-
--- ── Pillars ───────────────────────────────────────────────────────────────
-create table if not exists pillars (
-  id uuid primary key default gen_random_uuid(),
-  user_id uuid not null references profiles(id) on delete cascade,
-  slug text not null,
-  label text not null,
-  description text,
-  color text not null default '#6366f1',
-  icon_key text,
-  position integer not null default 0,
-  mastery integer not null default 0,
-  competency_areas jsonb not null default '[]'::jsonb,
-  created_at timestamptz default now()
-);
-
--- Backfill new column on existing rows (no-op if already added)
-alter table pillars add column if not exists competency_areas jsonb not null default '[]'::jsonb;
-
-create index if not exists pillars_user_idx on pillars (user_id, position);
-create unique index if not exists pillars_user_slug_unique on pillars (user_id, slug);
-
--- ── Tasks ─────────────────────────────────────────────────────────────────
-create table if not exists tasks (
-  id uuid primary key default gen_random_uuid(),
-  pillar_id uuid not null references pillars(id) on delete cascade,
-  user_id uuid not null references profiles(id) on delete cascade,
-  title text not null,
-  notes text,
-  is_complete boolean not null default false,
-  advisory_minutes integer,
-  position integer not null default 0,
-  due_date date,
-  recurrence_rule jsonb,
-  completed_at timestamptz,
-  created_at timestamptz default now(),
-  updated_at timestamptz default now()
-);
-
-create index if not exists tasks_pillar_idx on tasks (pillar_id, position);
-create index if not exists tasks_user_updated_idx on tasks (user_id, updated_at desc);
-
--- ── Steps ─────────────────────────────────────────────────────────────────
-create table if not exists steps (
-  id uuid primary key default gen_random_uuid(),
-  task_id uuid not null references tasks(id) on delete cascade,
-  user_id uuid not null references profiles(id) on delete cascade,
-  title text not null,
-  is_complete boolean not null default false,
-  position integer not null default 0,
-  created_at timestamptz default now()
-);
-
-create index if not exists steps_task_idx on steps (task_id, position);
-
--- ── Chat messages ─────────────────────────────────────────────────────────
-create table if not exists chat_messages (
-  id uuid primary key default gen_random_uuid(),
-  user_id uuid not null references profiles(id) on delete cascade,
-  pillar_slug text not null,
-  role text not null,
-  content text not null,
-  created_at timestamptz default now()
-);
-
-create index if not exists chat_messages_user_pillar_idx
-  on chat_messages (user_id, pillar_slug, created_at);
-
--- ── Quiz results (drives mastery scoring) ────────────────────────────────
-create table if not exists quiz_results (
-  id uuid primary key default gen_random_uuid(),
-  user_id uuid not null references profiles(id) on delete cascade,
-  pillar_id uuid not null references pillars(id) on delete cascade,
-  competency_name text not null,
-  score numeric(4,3) not null check (score >= 0 and score <= 1),
-  max_score integer not null default 10,
-  questions jsonb not null default '[]'::jsonb,
-  taken_at timestamptz default now()
-);
-
-create index if not exists quiz_results_pillar_competency_idx
-  on quiz_results (pillar_id, competency_name, taken_at);
-create index if not exists quiz_results_user_idx
-  on quiz_results (user_id, taken_at);
-
--- ── updated_at trigger for tasks ─────────────────────────────────────────
-create or replace function update_updated_at()
-returns trigger as $$
-begin
-  new.updated_at = now();
-  return new;
-end;
-$$ language plpgsql;
-
-drop trigger if exists tasks_updated_at on tasks;
-create trigger tasks_updated_at
-  before update on tasks
-  for each row execute function update_updated_at();
-```
-
-In **Project Settings → API**, copy:
-- Project URL → `NEXT_PUBLIC_SUPABASE_URL`
-- anon key → `NEXT_PUBLIC_SUPABASE_ANON_KEY`
-- service_role key → `SUPABASE_SERVICE_ROLE_KEY`
+Schema source of truth: the numbered SQL files in `migrations/`. The legacy `src/supabase/*.sql` files are retained for reference only.
 
 ### 3. OAuth (at least one provider required)
 
@@ -191,7 +103,19 @@ The AI tutor and rubric/quiz generation run on **local Ollama** — no cloud cal
 
 Cloud providers (Claude first, Gemini later) will be added in a future release.
 
-### 5. Environment
+### 5. Notion integration (optional)
+
+One-way sync of tasks, pillars, AI tutor history, and quiz results into your Notion workspace. To enable:
+
+1. Create a public OAuth integration at [notion.so/my-integrations](https://www.notion.so/my-integrations).
+2. Set the redirect URI to `http://localhost:3000/api/integrations/notion/callback` (or your deployed equivalent).
+3. Copy the Client ID and Client Secret into `.env.local` as `NOTION_CLIENT_ID`, `NOTION_CLIENT_SECRET`, and `NOTION_REDIRECT_URI` (or re-run `npm run setup`).
+4. In Notion, share at least one page with your integration so it has somewhere to write.
+5. In Meridian go to **Settings → Integrations → Connect Notion**, then click **Sync now**.
+
+Defaults sync Tasks, Pillars, and AI suggestions; Quiz/mastery is opt-in. Source of truth stays in Meridian — Notion content is overwritten on conflict. Disconnecting clears the access token but does not delete content already synced.
+
+### 6. Environment
 
 Run the wizard:
 
@@ -206,7 +130,7 @@ cp .env.example .env.local
 # fill in values
 ```
 
-### 6. Run
+### 7. Run
 
 ```bash
 npm run dev
@@ -242,9 +166,12 @@ src/
     ├── supabase/               Admin + browser clients
     └── types.ts                Shared TS types
 
+migrations/                     Numbered SQL migrations applied by `npm run update`
 scripts/setup.mjs               Interactive .env.local wizard
+scripts/update.mjs              Pull + install + apply migrations + build
 setup.command / setup.bat       Double-click wrappers for setup
 start.command / start.bat       Double-click wrappers to launch
+update.command / update.bat     Double-click wrappers to update
 ```
 
 ## Notes

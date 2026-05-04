@@ -45,6 +45,7 @@ export function FocusTimer({ onClose }: Props) {
   const [fading, setFading] = useState(false);
   const [activePlaylist, setActivePlaylist] = useState<string | null>(null);
   const [videoPlaying, setVideoPlaying] = useState(false);
+  const [videoLoaded, setVideoLoaded] = useState(false);
   const iframeRef = useRef<HTMLIFrameElement>(null);
 
   // Timer countdown
@@ -80,6 +81,7 @@ export function FocusTimer({ onClose }: Props) {
   // When playlist changes, assume video auto-plays (autoplay=1 in src)
   useEffect(() => {
     setVideoPlaying(!!activePlaylist);
+    setVideoLoaded(false);
   }, [activePlaylist]);
 
   function sendVideoCommand(command: string) {
@@ -148,10 +150,11 @@ export function FocusTimer({ onClose }: Props) {
         <iframe
           ref={iframeRef}
           key={activePlaylist}
-          src={`https://www.youtube.com/embed/${activePlaylistData?.videoId}?autoplay=1&rel=0&playsinline=1&enablejsapi=1`}
+          src={`https://www.youtube-nocookie.com/embed/${activePlaylistData?.videoId}?autoplay=1&rel=0&playsinline=1&enablejsapi=1&controls=0&modestbranding=1&iv_load_policy=3&disablekb=1`}
           allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
           referrerPolicy="strict-origin-when-cross-origin"
           title={activePlaylistData?.label}
+          onLoad={() => setVideoLoaded(true)}
           style={{
             position: "absolute",
             top: "50%",
@@ -163,6 +166,8 @@ export function FocusTimer({ onClose }: Props) {
             minWidth: "177.78vh",
             border: "none",
             pointerEvents: "none",
+            opacity: videoLoaded ? 1 : 0,
+            transition: "opacity 1s ease",
           }}
         />
       )}

@@ -157,10 +157,25 @@ export function TopBar() {
   const { data: session } = useSession();
 
   useEffect(() => {
-    fetch("/api/pillars")
-      .then((r) => r.json())
-      .then((data) => { if (Array.isArray(data)) setPillars(data); })
-      .catch(() => {});
+    function refetch() {
+      fetch("/api/pillars")
+        .then((r) => r.json())
+        .then((data) => { if (Array.isArray(data)) setPillars(data); })
+        .catch(() => {});
+    }
+
+    function handleLabelChange(e: Event) {
+      const { slug, label, color } = (e as CustomEvent<{ slug: string; label: string; color: string }>).detail;
+      setPillars((prev) => prev.map((p) => p.slug === slug ? { ...p, label, color } : p));
+    }
+
+    refetch();
+    window.addEventListener("pillars-changed", refetch);
+    window.addEventListener("pillar-label-changed", handleLabelChange);
+    return () => {
+      window.removeEventListener("pillars-changed", refetch);
+      window.removeEventListener("pillar-label-changed", handleLabelChange);
+    };
   }, []);
 
   const tabs = [
